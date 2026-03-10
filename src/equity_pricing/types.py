@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+import numpy as np
+
 
 def _require_positive(value: float, name: str) -> None:
     if value <= 0.0:
@@ -27,12 +29,14 @@ class OptionSide(str, Enum):
 class VanillaOption:
     """European vanilla equity option contract."""
 
-    strike: float
+    strike: float | np.ndarray
     maturity: float
     side: OptionSide
 
     def __post_init__(self) -> None:
-        _require_positive(self.strike, "strike")
+        strikes = np.asarray(self.strike, dtype=float)
+        if np.any(strikes <= 0.0):
+            raise ValueError("strike must be positive.")
         _require_positive(self.maturity, "maturity")
 
 
