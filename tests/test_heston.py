@@ -6,9 +6,13 @@ import pytest
 from equity_pricing import (
     FlatMarketInputs,
     HestonParams,
+    OptionSide,
+    VanillaOption,
     heston_characteristic_function,
     heston_lewis_integrand,
     integrate_heston_integrand,
+    price_european,
+    price_european_heston,
 )
 
 
@@ -149,3 +153,51 @@ def test_heston_lewis_integrand_can_be_integrated(
     assert math.isfinite(value)
     assert value > 0.0
     assert error >= 0.0
+
+
+def test_heston_call_price_matches_black_scholes_in_near_deterministic_limit(
+    sample_market: FlatMarketInputs,
+) -> None:
+    option = VanillaOption(strike=100.0, maturity=1.25, side=OptionSide.CALL)
+    variance = 0.04
+    params = HestonParams(kappa=20.0, theta=variance, sigma=1.0e-3, rho=0.0, v0=variance)
+
+    heston_price = price_european_heston(option, sample_market, params, upper_limit=120.0)
+    black_scholes_price = price_european(option, sample_market, vol=math.sqrt(variance))
+
+    assert heston_price == pytest.approx(black_scholes_price, abs=5.0e-3)
+
+
+def test_heston_call_price_matches_regression_value(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    option = VanillaOption(strike=100.0, maturity=1.25, side=OptionSide.CALL)
+
+    price = price_european_heston(option, sample_market, sample_params)
+
+    assert price == pytest.approx(9.680777762358808, rel=1e-10, abs=1e-10)
+
+
+def test_heston_call_price_rejects_puts(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    option = VanillaOption(strike=100.0, maturity=1.25, side=OptionSide.PUT)
+
+    with pytest.raises(NotImplementedError, match="put pricing"):
+        price_european_heston(option, sample_market, sample_params)
+
+
+def test_heston_call_price_rejects_vector_strikes(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    option = VanillaOption(
+        strike=np.array([95.0, 100.0]),
+        maturity=1.25,
+        side=OptionSide.CALL,
+    )
+
+    with pytest.raises(TypeError, match="scalar strikes"):
+        price_european_heston(option, sample_market, sample_params)

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from scipy.integrate import quad
 
+from equity_pricing.black_scholes import discount_factor
 from equity_pricing.types import FlatMarketInputs, HestonParams
+from equity_pricing.types import OptionSide, VanillaOption
 
 
 def _ensure_positive_real_part(values: np.ndarray) -> np.ndarray:
@@ -102,3 +106,84 @@ def integrate_heston_integrand(
         limit=limit,
     )
     return float(value), float(error)
+
+
+def _heston_probability_integrand(
+    u: float,
+    strike: float,
+    maturity: float,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    probability_index: int,
+) -> float:
+    if u == 0.0:
+        return 0.0
+
+    argument = complex(u, -1.0) if probability_index == 1 else complex(u, 0.0)
+    numerator = np.exp(-1j * u * math.log(strike)) * heston_characteristic_function(
+        argument,
+        maturity,
+        market,
+        params,
+    )
+    if probability_index == 1:
+        normalization = heston_characteristic_function(-1j, maturity, market, params)
+        numerator = numerator / normalization
+
+    return float(np.real(numerator / (1j * u)))
+
+
+def price_european(
+    option: VanillaOption,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    *,
+    upper_limit: float = 200.0,
+    abs_tol: float = 1.0e-8,
+    rel_tol: float = 1.0e-8,
+    limit: int = 200,
+) -> float:
+    """Price a European call under the Heston model via semi-analytic probabilities."""
+
+    if option.side is not OptionSide.CALL:
+        raise NotImplementedError("Heston put pricing is not implemented yet.")
+    if np.ndim(option.strike) != 0:
+        raise TypeError("Heston pricing only supports scalar strikes in this commit.")
+
+    strike = float(option.strike)
+    discount_r = discount_factor(market.risk_free_rate, option.maturity)
+    discount_q = discount_factor(market.dividend_yield, option.maturity)
+
+    p1_integral, _ = integrate_heston_integrand(
+        lambda u: _heston_probability_integrand(
+            u,
+            strike=strike,
+            maturity=option.maturity,
+            market=market,
+            params=params,
+            probability_index=1,
+        ),
+        upper_limit=upper_limit,
+        abs_tol=abs_tol,
+        rel_tol=rel_tol,
+        limit=limit,
+    )
+    p2_integral, _ = integrate_heston_integrand(
+        lambda u: _heston_probability_integrand(
+            u,
+            strike=strike,
+            maturity=option.maturity,
+            market=market,
+            params=params,
+            probability_index=2,
+        ),
+        upper_limit=upper_limit,
+        abs_tol=abs_tol,
+        rel_tol=rel_tol,
+        limit=limit,
+    )
+
+    p1 = 0.5 + p1_integral / math.pi
+    p2 = 0.5 + p2_integral / math.pi
+    price = market.spot * discount_q * p1 - strike * discount_r * p2
+    return max(0.0, price)
