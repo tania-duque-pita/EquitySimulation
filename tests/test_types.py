@@ -1,3 +1,5 @@
+from typing import Dict
+
 import pytest
 
 from equity_pricing import FlatMarketInputs, OptionSide, VanillaOption
