@@ -133,32 +133,25 @@ def _heston_probability_integrand(
     return float(np.real(numerator / (1j * u)))
 
 
-def price_european(
-    option: VanillaOption,
+def _price_call_scalar(
+    strike: float,
+    maturity: float,
     market: FlatMarketInputs,
     params: HestonParams,
     *,
-    upper_limit: float = 200.0,
-    abs_tol: float = 1.0e-8,
-    rel_tol: float = 1.0e-8,
-    limit: int = 200,
+    upper_limit: float,
+    abs_tol: float,
+    rel_tol: float,
+    limit: int,
 ) -> float:
-    """Price a European call under the Heston model via semi-analytic probabilities."""
-
-    if option.side is not OptionSide.CALL:
-        raise NotImplementedError("Heston put pricing is not implemented yet.")
-    if np.ndim(option.strike) != 0:
-        raise TypeError("Heston pricing only supports scalar strikes in this commit.")
-
-    strike = float(option.strike)
-    discount_r = discount_factor(market.risk_free_rate, option.maturity)
-    discount_q = discount_factor(market.dividend_yield, option.maturity)
+    discount_r = discount_factor(market.risk_free_rate, maturity)
+    discount_q = discount_factor(market.dividend_yield, maturity)
 
     p1_integral, _ = integrate_heston_integrand(
         lambda u: _heston_probability_integrand(
             u,
             strike=strike,
-            maturity=option.maturity,
+            maturity=maturity,
             market=market,
             params=params,
             probability_index=1,
@@ -172,7 +165,7 @@ def price_european(
         lambda u: _heston_probability_integrand(
             u,
             strike=strike,
-            maturity=option.maturity,
+            maturity=maturity,
             market=market,
             params=params,
             probability_index=2,
@@ -185,5 +178,49 @@ def price_european(
 
     p1 = 0.5 + p1_integral / math.pi
     p2 = 0.5 + p2_integral / math.pi
-    price = market.spot * discount_q * p1 - strike * discount_r * p2
-    return max(0.0, price)
+    return max(0.0, market.spot * discount_q * p1 - strike * discount_r * p2)
+
+
+def price_european(
+    option: VanillaOption,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    *,
+    upper_limit: float = 200.0,
+    abs_tol: float = 1.0e-8,
+    rel_tol: float = 1.0e-8,
+    limit: int = 200,
+) -> float | np.ndarray:
+    """Price a European option under the Heston model via semi-analytic probabilities."""
+
+    strikes = np.asarray(option.strike, dtype=float)
+    scalar_input = strikes.ndim == 0
+    strikes_1d = np.atleast_1d(strikes)
+
+    discount_r = discount_factor(market.risk_free_rate, option.maturity)
+    discount_q = discount_factor(market.dividend_yield, option.maturity)
+    forward_intrinsic = market.spot * discount_q - strikes_1d * discount_r
+
+    call_prices = np.array(
+        [
+            _price_call_scalar(
+                float(strike),
+                option.maturity,
+                market,
+                params,
+                upper_limit=upper_limit,
+                abs_tol=abs_tol,
+                rel_tol=rel_tol,
+                limit=limit,
+            )
+            for strike in strikes_1d
+        ],
+        dtype=float,
+    )
+
+    if option.side is OptionSide.CALL:
+        prices = call_prices
+    else:
+        prices = call_prices - forward_intrinsic
+
+    return float(prices[0]) if scalar_input else prices

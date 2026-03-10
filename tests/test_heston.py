@@ -179,17 +179,26 @@ def test_heston_call_price_matches_regression_value(
     assert price == pytest.approx(9.680777762358808, rel=1e-10, abs=1e-10)
 
 
-def test_heston_call_price_rejects_puts(
+def test_heston_put_price_matches_put_call_parity(
     sample_market: FlatMarketInputs,
     sample_params: HestonParams,
 ) -> None:
-    option = VanillaOption(strike=100.0, maturity=1.25, side=OptionSide.PUT)
+    strike = 100.0
+    maturity = 1.25
+    call = VanillaOption(strike=strike, maturity=maturity, side=OptionSide.CALL)
+    put = VanillaOption(strike=strike, maturity=maturity, side=OptionSide.PUT)
 
-    with pytest.raises(NotImplementedError, match="put pricing"):
-        price_european_heston(option, sample_market, sample_params)
+    call_price = price_european_heston(call, sample_market, sample_params)
+    put_price = price_european_heston(put, sample_market, sample_params)
+    parity_rhs = (
+        strike * math.exp(-sample_market.risk_free_rate * maturity)
+        - sample_market.spot * math.exp(-sample_market.dividend_yield * maturity)
+    )
+
+    assert put_price - call_price == pytest.approx(parity_rhs, abs=1e-10)
 
 
-def test_heston_call_price_rejects_vector_strikes(
+def test_heston_price_supports_vector_strikes(
     sample_market: FlatMarketInputs,
     sample_params: HestonParams,
 ) -> None:
@@ -199,5 +208,25 @@ def test_heston_call_price_rejects_vector_strikes(
         side=OptionSide.CALL,
     )
 
-    with pytest.raises(TypeError, match="scalar strikes"):
-        price_european_heston(option, sample_market, sample_params)
+    prices = price_european_heston(option, sample_market, sample_params)
+
+    assert isinstance(prices, np.ndarray)
+    assert prices.shape == (2,)
+    np.testing.assert_allclose(prices, np.array([12.71343440, 9.68077776]), rtol=1e-8, atol=1e-8)
+
+
+def test_heston_put_price_supports_vector_strikes(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    option = VanillaOption(
+        strike=np.array([95.0, 100.0]),
+        maturity=1.25,
+        side=OptionSide.PUT,
+    )
+
+    prices = price_european_heston(option, sample_market, sample_params)
+
+    assert isinstance(prices, np.ndarray)
+    assert prices.shape == (2,)
+    np.testing.assert_allclose(prices, np.array([5.45912403, 7.24243949]), rtol=1e-8, atol=1e-8)
