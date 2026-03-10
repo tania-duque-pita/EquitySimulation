@@ -19,6 +19,15 @@ def _require_non_negative(value: float, name: str) -> None:
         raise ValueError(f"{name} must be non-negative, got {value!r}.")
 
 
+def _logit(value: float, lower: float, upper: float) -> float:
+    scaled = (value - lower) / (upper - lower)
+    return float(np.log(scaled / (1.0 - scaled)))
+
+
+def _sigmoid(value: float) -> float:
+    return float(1.0 / (1.0 + np.exp(-value)))
+
+
 class OptionSide(str, Enum):
     """Vanilla European option side."""
 
@@ -101,3 +110,67 @@ class MarketSmile:
     @property
     def implied_vols(self) -> np.ndarray:
         return np.array([quote.implied_vol for quote in self.quotes], dtype=float)
+
+
+@dataclass(frozen=True, slots=True)
+class HestonParams:
+    """Heston model parameters with hard bounds and optimizer transforms."""
+
+    kappa: float
+    theta: float
+    sigma: float
+    rho: float
+    v0: float
+
+    # Upper bounds are finite to support stable optimizer transforms.
+    BOUNDS = {
+        "kappa": (1.0e-6, 25.0),
+        "theta": (1.0e-6, 4.0),
+        "sigma": (1.0e-6, 10.0),
+        "rho": (-0.999, 0.999),
+        "v0": (1.0e-6, 4.0),
+    }
+
+    def __post_init__(self) -> None:
+        for name, (lower, upper) in self.BOUNDS.items():
+            value = getattr(self, name)
+            if not lower <= value <= upper:
+                raise ValueError(
+                    f"{name} must lie within [{lower}, {upper}], got {value!r}."
+                )
+
+    def as_array(self) -> np.ndarray:
+        return np.array(
+            [self.kappa, self.theta, self.sigma, self.rho, self.v0],
+            dtype=float,
+        )
+
+    def to_unconstrained(self) -> np.ndarray:
+        return np.array(
+            [
+                _logit(self.kappa, *self.BOUNDS["kappa"]),
+                _logit(self.theta, *self.BOUNDS["theta"]),
+                _logit(self.sigma, *self.BOUNDS["sigma"]),
+                _logit(self.rho, *self.BOUNDS["rho"]),
+                _logit(self.v0, *self.BOUNDS["v0"]),
+            ],
+            dtype=float,
+        )
+
+    @classmethod
+    def from_unconstrained(cls, values: np.ndarray) -> "HestonParams":
+        vector = np.asarray(values, dtype=float)
+        if vector.shape != (5,):
+            raise ValueError(f"values must have shape (5,), got {vector.shape!r}.")
+
+        def _bounded(component: float, name: str) -> float:
+            lower, upper = cls.BOUNDS[name]
+            return lower + (upper - lower) * _sigmoid(float(component))
+
+        return cls(
+            kappa=_bounded(vector[0], "kappa"),
+            theta=_bounded(vector[1], "theta"),
+            sigma=_bounded(vector[2], "sigma"),
+            rho=_bounded(vector[3], "rho"),
+            v0=_bounded(vector[4], "v0"),
+        )

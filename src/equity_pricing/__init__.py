@@ -11,6 +11,7 @@ from equity_pricing.implied_vol import implied_vol_from_price
 from equity_pricing.plots import plot_market_smile
 from equity_pricing.types import (
     FlatMarketInputs,
+    HestonParams,
     MarketSmile,
     OptionSide,
     SmileQuote,
@@ -20,6 +21,7 @@ from equity_pricing.types import (
 __all__ = [
     "__version__",
     "FlatMarketInputs",
+    "HestonParams",
     "MarketSmile",
     "OptionSide",
     "SmileQuote",
