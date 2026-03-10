@@ -8,12 +8,20 @@ from equity_pricing.black_scholes import (
     vega,
 )
 from equity_pricing.implied_vol import implied_vol_from_price
-from equity_pricing.types import FlatMarketInputs, OptionSide, VanillaOption
+from equity_pricing.types import (
+    FlatMarketInputs,
+    MarketSmile,
+    OptionSide,
+    SmileQuote,
+    VanillaOption,
+)
 
 __all__ = [
     "__version__",
     "FlatMarketInputs",
+    "MarketSmile",
     "OptionSide",
+    "SmileQuote",
     "VanillaOption",
     "discount_factor",
     "forward_price",
