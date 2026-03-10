@@ -49,6 +49,26 @@ def _restart_vectors(initial_params: HestonParams, n_restarts: int) -> list[np.n
     return bounded_vectors
 
 
+def _quote_residuals(
+    smile: MarketSmile,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    settings: CalibrationSettings,
+) -> np.ndarray:
+    model_vols = model_smile(
+        smile.strikes,
+        smile.maturity,
+        market,
+        params,
+        fill_value=np.nan,
+        upper_limit=settings.upper_limit,
+        abs_tol=settings.abs_tol,
+        rel_tol=settings.rel_tol,
+        limit=settings.integration_limit,
+    )
+    return np.where(np.isnan(model_vols - smile.implied_vols), settings.nan_penalty, model_vols - smile.implied_vols)
+
+
 def smile_residuals(
     smile: MarketSmile,
     market: FlatMarketInputs,
@@ -58,23 +78,7 @@ def smile_residuals(
     """Return model-minus-market implied-vol residuals for a single smile."""
 
     calibration_settings = settings or CalibrationSettings()
-    model_vols = model_smile(
-        smile.strikes,
-        smile.maturity,
-        market,
-        params,
-        fill_value=np.nan,
-        upper_limit=calibration_settings.upper_limit,
-        abs_tol=calibration_settings.abs_tol,
-        rel_tol=calibration_settings.rel_tol,
-        limit=calibration_settings.integration_limit,
-    )
-
-    residuals = np.where(
-        np.isnan(model_vols - smile.implied_vols),
-        calibration_settings.nan_penalty,
-        model_vols - smile.implied_vols,
-    )
+    residuals = _quote_residuals(smile, market, params, calibration_settings)
 
     if calibration_settings.enable_feller_penalty:
         residuals = np.concatenate(
@@ -132,11 +136,31 @@ def calibrate_smile(
     assert best_result is not None
     assert best_params is not None
     assert best_residuals is not None
+    model_vols = model_smile(
+        smile.strikes,
+        smile.maturity,
+        market,
+        best_params,
+        fill_value=np.nan,
+        upper_limit=calibration_settings.upper_limit,
+        abs_tol=calibration_settings.abs_tol,
+        rel_tol=calibration_settings.rel_tol,
+        limit=calibration_settings.integration_limit,
+    )
+    quote_residuals = _quote_residuals(smile, market, best_params, calibration_settings)
+    rmse = float(np.sqrt(np.mean(quote_residuals * quote_residuals)))
+    mae = float(np.mean(np.abs(quote_residuals)))
+    max_abs_error = float(np.max(np.abs(quote_residuals)))
 
     return CalibrationResult(
         params=best_params,
         residuals=best_residuals,
         objective_value=best_objective_value,
+        model_vols=model_vols,
+        market_vols=smile.implied_vols,
+        rmse=rmse,
+        mae=mae,
+        max_abs_error=max_abs_error,
         success=bool(best_result.success),
         nfev=total_nfev,
         message=str(best_result.message),

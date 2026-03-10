@@ -114,7 +114,12 @@ def test_calibrate_smile_returns_structured_result(
     assert isinstance(result, CalibrationResult)
     assert isinstance(result.params, HestonParams)
     assert result.residuals.shape == sample_smile.implied_vols.shape
+    assert result.model_vols.shape == sample_smile.implied_vols.shape
+    assert result.market_vols.shape == sample_smile.implied_vols.shape
     assert result.objective_value >= 0.0
+    assert result.rmse >= 0.0
+    assert result.mae >= 0.0
+    assert result.max_abs_error >= 0.0
     assert result.nfev > 0
     assert isinstance(result.message, str)
     assert result.n_restarts == 4
@@ -143,6 +148,9 @@ def test_calibrate_smile_recovers_synthetic_parameters() -> None:
         atol=5.0e-3,
     )
     assert np.linalg.norm(result.residuals) < 1e-3
+    assert result.rmse < 1e-3
+    assert result.mae < 1e-3
+    assert result.max_abs_error < 1e-3
 
 
 def test_smile_residuals_append_feller_penalty_when_enabled(
@@ -185,3 +193,19 @@ def test_calibrate_smile_with_restarts_recovers_from_poor_initial_guess() -> Non
     assert result.success
     assert result.n_restarts == 4
     assert np.linalg.norm(result.residuals[:-1]) < 2e-3
+
+
+def test_calibration_result_error_metrics_match_residuals(
+    sample_smile: MarketSmile,
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    result = calibrate_smile(sample_smile, sample_market, sample_params)
+
+    expected_rmse = float(np.sqrt(np.mean(result.residuals * result.residuals)))
+    expected_mae = float(np.mean(np.abs(result.residuals)))
+    expected_max_abs_error = float(np.max(np.abs(result.residuals)))
+
+    assert result.rmse == pytest.approx(expected_rmse)
+    assert result.mae == pytest.approx(expected_mae)
+    assert result.max_abs_error == pytest.approx(expected_max_abs_error)

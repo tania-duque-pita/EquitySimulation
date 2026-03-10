@@ -210,6 +210,11 @@ class CalibrationResult:
     params: HestonParams
     residuals: np.ndarray
     objective_value: float
+    model_vols: np.ndarray
+    market_vols: np.ndarray
+    rmse: float
+    mae: float
+    max_abs_error: float
     success: bool
     nfev: int
     message: str
