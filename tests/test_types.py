@@ -1,4 +1,4 @@
-from typing import Dict
+import re
 
 import pytest
 
@@ -50,5 +50,5 @@ def test_flat_market_inputs_reject_extreme_negative_carry_values(
     field_name: str,
     kwargs: dict[str, float],
 ) -> None:
-    with pytest.raises(ValueError, match=field_name):
+    with pytest.raises(ValueError, match=re.escape(field_name)):
         FlatMarketInputs(**kwargs)

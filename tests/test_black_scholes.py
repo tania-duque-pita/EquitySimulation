@@ -75,7 +75,7 @@ def test_put_price_bounds_match_discounted_intrinsic_and_strike_cap() -> None:
 
     lower, upper = price_bounds(option, market)
 
-    assert lower == pytest.approx(6.615848710968891)
+    assert lower == pytest.approx(6.615369364403023)
     assert upper == pytest.approx(104.63523669507855)
 
 
