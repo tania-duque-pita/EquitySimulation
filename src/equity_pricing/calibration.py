@@ -142,6 +142,30 @@ def surface_objective_from_unconstrained(
     return surface_residuals(surface, market, params, settings, expiry_weights)
 
 
+def _surface_model_vols(
+    surface: MarketSurface,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    settings: CalibrationSettings,
+) -> np.ndarray:
+    return np.concatenate(
+        [
+            model_smile(
+                smile.strikes,
+                smile.maturity,
+                market,
+                params,
+                fill_value=np.nan,
+                upper_limit=settings.upper_limit,
+                abs_tol=settings.abs_tol,
+                rel_tol=settings.rel_tol,
+                limit=settings.integration_limit,
+            )
+            for smile in surface.smiles
+        ]
+    )
+
+
 def calibrate_smile(
     smile: MarketSmile,
     market: FlatMarketInputs,
@@ -201,6 +225,74 @@ def calibrate_smile(
         objective_value=best_objective_value,
         model_vols=model_vols,
         market_vols=smile.implied_vols,
+        rmse=rmse,
+        mae=mae,
+        max_abs_error=max_abs_error,
+        success=bool(best_result.success),
+        nfev=total_nfev,
+        message=str(best_result.message),
+        n_restarts=calibration_settings.n_restarts,
+    )
+
+
+def calibrate_surface(
+    surface: MarketSurface,
+    market: FlatMarketInputs,
+    initial_params: HestonParams,
+    settings: CalibrationSettings | None = None,
+    expiry_weights: np.ndarray | None = None,
+) -> CalibrationResult:
+    """Calibrate Heston parameters to a full implied-volatility surface."""
+
+    calibration_settings = settings or CalibrationSettings(n_restarts=8)
+    best_result = None
+    best_params = None
+    best_residuals = None
+    best_objective_value = np.inf
+    total_nfev = 0
+
+    for start in _restart_vectors(initial_params, calibration_settings.n_restarts):
+        result = least_squares(
+            surface_objective_from_unconstrained,
+            x0=start,
+            args=(surface, market, calibration_settings, expiry_weights),
+            method="trf",
+        )
+        total_nfev += int(result.nfev)
+
+        candidate_params = HestonParams.from_unconstrained(result.x)
+        candidate_residuals = surface_residuals(
+            surface,
+            market,
+            candidate_params,
+            calibration_settings,
+            expiry_weights,
+        )
+        candidate_objective_value = 0.5 * float(np.dot(candidate_residuals, candidate_residuals))
+
+        if candidate_objective_value < best_objective_value:
+            best_result = result
+            best_params = candidate_params
+            best_residuals = candidate_residuals
+            best_objective_value = candidate_objective_value
+
+    assert best_result is not None
+    assert best_params is not None
+    assert best_residuals is not None
+
+    model_vols = _surface_model_vols(surface, market, best_params, calibration_settings)
+    market_vols = np.concatenate([smile.implied_vols for smile in surface.smiles])
+    quote_residuals = model_vols - market_vols
+    rmse = float(np.sqrt(np.mean(quote_residuals * quote_residuals)))
+    mae = float(np.mean(np.abs(quote_residuals)))
+    max_abs_error = float(np.max(np.abs(quote_residuals)))
+
+    return CalibrationResult(
+        params=best_params,
+        residuals=best_residuals,
+        objective_value=best_objective_value,
+        model_vols=model_vols,
+        market_vols=market_vols,
         rmse=rmse,
         mae=mae,
         max_abs_error=max_abs_error,

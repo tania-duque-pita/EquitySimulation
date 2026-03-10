@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from equity_pricing import (
+    calibrate_surface,
     calibrate_smile,
     model_smile,
     CalibrationSettings,
@@ -298,3 +299,52 @@ def test_surface_objective_from_unconstrained_matches_direct_surface_residuals(
     )
 
     np.testing.assert_allclose(objective, direct, rtol=1e-10, atol=1e-10)
+
+
+def test_calibrate_surface_returns_structured_result(
+    sample_surface: MarketSurface,
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    result = calibrate_surface(sample_surface, sample_market, sample_params)
+
+    assert isinstance(result, CalibrationResult)
+    assert result.model_vols.shape == (5,)
+    assert result.market_vols.shape == (5,)
+    assert result.objective_value >= 0.0
+    assert result.rmse >= 0.0
+    assert result.n_restarts == 8
+
+
+def test_calibrate_surface_recovers_synthetic_parameters() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.03, dividend_yield=0.01)
+    true_params = HestonParams(kappa=1.5, theta=0.045, sigma=0.5, rho=-0.5, v0=0.05)
+    strikes_by_expiry = (
+        np.array([90.0, 100.0, 110.0]),
+        np.array([85.0, 100.0, 115.0]),
+    )
+    maturities = np.array([0.75, 1.5])
+    smiles = []
+    for strikes, maturity in zip(strikes_by_expiry, maturities, strict=True):
+        vols = model_smile(strikes, maturity, market, true_params)
+        smiles.append(
+            MarketSmile(
+                tuple(
+                    SmileQuote(strike=float(strike), maturity=float(maturity), implied_vol=float(vol))
+                    for strike, vol in zip(strikes, vols, strict=True)
+                )
+            )
+        )
+    surface = MarketSurface(tuple(smiles))
+    initial_params = HestonParams(kappa=0.9, theta=0.03, sigma=0.8, rho=-0.2, v0=0.03)
+
+    result = calibrate_surface(surface, market, initial_params)
+
+    assert result.success
+    np.testing.assert_allclose(
+        result.params.as_array(),
+        true_params.as_array(),
+        rtol=3.0e-1,
+        atol=7.5e-3,
+    )
+    assert result.rmse < 1e-3

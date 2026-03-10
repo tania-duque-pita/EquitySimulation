@@ -8,6 +8,7 @@ from equity_pricing.black_scholes import (
     vega,
 )
 from equity_pricing.calibration import (
+    calibrate_surface,
     calibrate_smile,
     smile_objective_from_unconstrained,
     smile_residuals,
@@ -59,6 +60,7 @@ __all__ = [
     "model_surface",
     "price_european_heston",
     "implied_vol_from_price",
+    "calibrate_surface",
     "calibrate_smile",
     "smile_objective_from_unconstrained",
     "smile_residuals",
