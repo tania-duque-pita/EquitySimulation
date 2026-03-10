@@ -174,3 +174,24 @@ class HestonParams:
             rho=_bounded(vector[3], "rho"),
             v0=_bounded(vector[4], "v0"),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationSettings:
+    """Settings for Heston calibration objectives and optimizers."""
+
+    nan_penalty: float = 1.0
+    upper_limit: float = 200.0
+    abs_tol: float = 1.0e-8
+    rel_tol: float = 1.0e-8
+    integration_limit: int = 200
+
+    def __post_init__(self) -> None:
+        _require_positive(self.nan_penalty, "nan_penalty")
+        _require_positive(self.upper_limit, "upper_limit")
+        _require_positive(self.abs_tol, "abs_tol")
+        _require_positive(self.rel_tol, "rel_tol")
+        if self.integration_limit <= 0:
+            raise ValueError(
+                f"integration_limit must be positive, got {self.integration_limit!r}."
+            )
