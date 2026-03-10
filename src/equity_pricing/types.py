@@ -113,6 +113,28 @@ class MarketSmile:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketSurface:
+    """Ordered collection of market smiles across expiries."""
+
+    smiles: Tuple[MarketSmile, ...]
+
+    def __post_init__(self) -> None:
+        if not self.smiles:
+            raise ValueError("smiles must not be empty.")
+
+        sorted_smiles = tuple(sorted(self.smiles, key=lambda smile: smile.maturity))
+        object.__setattr__(self, "smiles", sorted_smiles)
+
+        maturities = [smile.maturity for smile in sorted_smiles]
+        if len(set(maturities)) != len(maturities):
+            raise ValueError("surface maturities must be unique.")
+
+    @property
+    def maturities(self) -> np.ndarray:
+        return np.array([smile.maturity for smile in self.smiles], dtype=float)
+
+
+@dataclass(frozen=True, slots=True)
 class HestonParams:
     """Heston model parameters with hard bounds and optimizer transforms."""
 
