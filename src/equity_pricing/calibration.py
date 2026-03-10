@@ -15,6 +15,40 @@ from equity_pricing.types import (
 )
 
 
+def _feller_penalty(params: HestonParams, weight: float) -> float:
+    violation = max(0.0, params.sigma * params.sigma - 2.0 * params.kappa * params.theta)
+    return weight * violation
+
+
+def _restart_vectors(initial_params: HestonParams, n_restarts: int) -> list[np.ndarray]:
+    base = initial_params.as_array()
+    scales = [
+        np.array([1.0, 1.0, 1.0, 1.0, 1.0]),
+        np.array([0.7, 1.2, 1.3, 0.8, 0.9]),
+        np.array([1.4, 0.8, 0.7, 1.15, 1.1]),
+        np.array([0.5, 1.5, 1.6, 0.6, 0.7]),
+        np.array([1.8, 0.6, 0.5, 1.25, 1.3]),
+        np.array([0.9, 0.9, 1.8, 1.1, 1.4]),
+        np.array([1.1, 1.4, 0.6, 0.7, 0.8]),
+        np.array([1.6, 1.1, 1.1, 1.3, 0.6]),
+    ]
+    bounded_vectors: list[np.ndarray] = []
+    for scale in scales[:n_restarts]:
+        candidate = base * scale
+        clipped = np.array(
+            [
+                np.clip(candidate[0], *HestonParams.BOUNDS["kappa"]),
+                np.clip(candidate[1], *HestonParams.BOUNDS["theta"]),
+                np.clip(candidate[2], *HestonParams.BOUNDS["sigma"]),
+                np.clip(candidate[3], *HestonParams.BOUNDS["rho"]),
+                np.clip(candidate[4], *HestonParams.BOUNDS["v0"]),
+            ],
+            dtype=float,
+        )
+        bounded_vectors.append(HestonParams(*clipped).to_unconstrained())
+    return bounded_vectors
+
+
 def smile_residuals(
     smile: MarketSmile,
     market: FlatMarketInputs,
@@ -36,8 +70,17 @@ def smile_residuals(
         limit=calibration_settings.integration_limit,
     )
 
-    residuals = model_vols - smile.implied_vols
-    return np.where(np.isnan(residuals), calibration_settings.nan_penalty, residuals)
+    residuals = np.where(
+        np.isnan(model_vols - smile.implied_vols),
+        calibration_settings.nan_penalty,
+        model_vols - smile.implied_vols,
+    )
+
+    if calibration_settings.enable_feller_penalty:
+        residuals = np.concatenate(
+            [residuals, np.array([_feller_penalty(params, calibration_settings.feller_penalty_weight)])]
+        )
+    return residuals
 
 
 def smile_objective_from_unconstrained(
@@ -61,22 +104,41 @@ def calibrate_smile(
     """Calibrate Heston parameters to a single market smile."""
 
     calibration_settings = settings or CalibrationSettings()
-    result = least_squares(
-        smile_objective_from_unconstrained,
-        x0=initial_params.to_unconstrained(),
-        args=(smile, market, calibration_settings),
-        method="trf",
-    )
+    best_result = None
+    best_params = None
+    best_residuals = None
+    best_objective_value = np.inf
+    total_nfev = 0
 
-    calibrated_params = HestonParams.from_unconstrained(result.x)
-    residuals = smile_residuals(smile, market, calibrated_params, calibration_settings)
-    objective_value = 0.5 * float(np.dot(residuals, residuals))
+    for start in _restart_vectors(initial_params, calibration_settings.n_restarts):
+        result = least_squares(
+            smile_objective_from_unconstrained,
+            x0=start,
+            args=(smile, market, calibration_settings),
+            method="trf",
+        )
+        total_nfev += int(result.nfev)
+
+        candidate_params = HestonParams.from_unconstrained(result.x)
+        candidate_residuals = smile_residuals(smile, market, candidate_params, calibration_settings)
+        candidate_objective_value = 0.5 * float(np.dot(candidate_residuals, candidate_residuals))
+
+        if candidate_objective_value < best_objective_value:
+            best_result = result
+            best_params = candidate_params
+            best_residuals = candidate_residuals
+            best_objective_value = candidate_objective_value
+
+    assert best_result is not None
+    assert best_params is not None
+    assert best_residuals is not None
 
     return CalibrationResult(
-        params=calibrated_params,
-        residuals=residuals,
-        objective_value=objective_value,
-        success=bool(result.success),
-        nfev=int(result.nfev),
-        message=str(result.message),
+        params=best_params,
+        residuals=best_residuals,
+        objective_value=best_objective_value,
+        success=bool(best_result.success),
+        nfev=total_nfev,
+        message=str(best_result.message),
+        n_restarts=calibration_settings.n_restarts,
     )

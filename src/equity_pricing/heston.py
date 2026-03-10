@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import math
+import warnings
 
 import numpy as np
-from scipy.integrate import quad
+from scipy.integrate import IntegrationWarning, quad
 
 from equity_pricing.black_scholes import discount_factor
 from equity_pricing.implied_vol import implied_vol_from_price
@@ -39,22 +40,25 @@ def heston_characteristic_function(
     rho = params.rho
     v0 = params.v0
 
-    iu = 1j * argument
-    beta = kappa - rho * sigma * iu
-    d = _ensure_positive_real_part(np.sqrt(beta * beta + sigma * sigma * (iu + argument * argument)))
-    g = (beta - d) / (beta + d)
-    exp_neg_d_t = np.exp(-d * maturity)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        iu = 1j * argument
+        beta = kappa - rho * sigma * iu
+        d = _ensure_positive_real_part(
+            np.sqrt(beta * beta + sigma * sigma * (iu + argument * argument))
+        )
+        g = (beta - d) / (beta + d)
+        exp_neg_d_t = np.exp(-d * maturity)
 
-    one_minus_g_exp = 1.0 - g * exp_neg_d_t
-    one_minus_g = 1.0 - g
+        one_minus_g_exp = 1.0 - g * exp_neg_d_t
+        one_minus_g = 1.0 - g
 
-    c_term = (
-        iu * (x0 + drift * maturity)
-        + (kappa * theta / (sigma * sigma))
-        * ((beta - d) * maturity - 2.0 * np.log(one_minus_g_exp / one_minus_g))
-    )
-    d_term = ((beta - d) / (sigma * sigma)) * ((1.0 - exp_neg_d_t) / one_minus_g_exp)
-    values = np.exp(c_term + d_term * v0)
+        c_term = (
+            iu * (x0 + drift * maturity)
+            + (kappa * theta / (sigma * sigma))
+            * ((beta - d) * maturity - 2.0 * np.log(one_minus_g_exp / one_minus_g))
+        )
+        d_term = ((beta - d) / (sigma * sigma)) * ((1.0 - exp_neg_d_t) / one_minus_g_exp)
+        values = np.exp(c_term + d_term * v0)
 
     return complex(values) if scalar_input else values
 
@@ -98,14 +102,16 @@ def integrate_heston_integrand(
     if upper_limit <= 0.0:
         raise ValueError(f"upper_limit must be positive, got {upper_limit!r}.")
 
-    value, error = quad(
-        integrand,
-        0.0,
-        upper_limit,
-        epsabs=abs_tol,
-        epsrel=rel_tol,
-        limit=limit,
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", IntegrationWarning)
+        value, error = quad(
+            integrand,
+            0.0,
+            upper_limit,
+            epsabs=abs_tol,
+            epsrel=rel_tol,
+            limit=limit,
+        )
     return float(value), float(error)
 
 
@@ -129,6 +135,8 @@ def _heston_probability_integrand(
     )
     if probability_index == 1:
         normalization = heston_characteristic_function(-1j, maturity, market, params)
+        if not np.isfinite(normalization) or normalization == 0.0:
+            return float("nan")
         numerator = numerator / normalization
 
     return float(np.real(numerator / (1j * u)))

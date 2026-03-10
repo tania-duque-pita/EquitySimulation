@@ -185,6 +185,9 @@ class CalibrationSettings:
     abs_tol: float = 1.0e-8
     rel_tol: float = 1.0e-8
     integration_limit: int = 200
+    n_restarts: int = 4
+    enable_feller_penalty: bool = False
+    feller_penalty_weight: float = 1.0
 
     def __post_init__(self) -> None:
         _require_positive(self.nan_penalty, "nan_penalty")
@@ -195,6 +198,9 @@ class CalibrationSettings:
             raise ValueError(
                 f"integration_limit must be positive, got {self.integration_limit!r}."
             )
+        if self.n_restarts <= 0:
+            raise ValueError(f"n_restarts must be positive, got {self.n_restarts!r}.")
+        _require_positive(self.feller_penalty_weight, "feller_penalty_weight")
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,3 +213,4 @@ class CalibrationResult:
     success: bool
     nfev: int
     message: str
+    n_restarts: int

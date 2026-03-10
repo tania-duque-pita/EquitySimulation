@@ -43,6 +43,9 @@ def test_calibration_settings_validate_inputs() -> None:
     with pytest.raises(ValueError, match="integration_limit"):
         CalibrationSettings(integration_limit=0)
 
+    with pytest.raises(ValueError, match="n_restarts"):
+        CalibrationSettings(n_restarts=0)
+
 
 def test_smile_residuals_are_model_minus_market_vols(
     sample_smile: MarketSmile,
@@ -114,6 +117,7 @@ def test_calibrate_smile_returns_structured_result(
     assert result.objective_value >= 0.0
     assert result.nfev > 0
     assert isinstance(result.message, str)
+    assert result.n_restarts == 4
 
 
 def test_calibrate_smile_recovers_synthetic_parameters() -> None:
@@ -139,3 +143,45 @@ def test_calibrate_smile_recovers_synthetic_parameters() -> None:
         atol=5.0e-3,
     )
     assert np.linalg.norm(result.residuals) < 1e-3
+
+
+def test_smile_residuals_append_feller_penalty_when_enabled(
+    sample_smile: MarketSmile,
+    sample_market: FlatMarketInputs,
+) -> None:
+    violating_params = HestonParams(kappa=0.5, theta=0.04, sigma=1.0, rho=-0.6, v0=0.05)
+
+    residuals = smile_residuals(
+        sample_smile,
+        sample_market,
+        violating_params,
+        CalibrationSettings(enable_feller_penalty=True, feller_penalty_weight=2.0),
+    )
+
+    assert residuals.shape == (4,)
+    assert residuals[-1] > 0.0
+
+
+def test_calibrate_smile_with_restarts_recovers_from_poor_initial_guess() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.03, dividend_yield=0.01)
+    true_params = HestonParams(kappa=1.6, theta=0.05, sigma=0.45, rho=-0.55, v0=0.045)
+    strikes = np.array([85.0, 92.5, 100.0, 107.5, 115.0])
+    target_vols = model_smile(strikes, 1.0, market, true_params)
+    smile = MarketSmile(
+        tuple(
+            SmileQuote(strike=float(strike), maturity=1.0, implied_vol=float(vol))
+            for strike, vol in zip(strikes, target_vols, strict=True)
+        )
+    )
+    poor_initial_params = HestonParams(kappa=8.0, theta=0.2, sigma=2.0, rho=0.2, v0=0.2)
+
+    result = calibrate_smile(
+        smile,
+        market,
+        poor_initial_params,
+        CalibrationSettings(n_restarts=4, enable_feller_penalty=True, feller_penalty_weight=0.1),
+    )
+
+    assert result.success
+    assert result.n_restarts == 4
+    assert np.linalg.norm(result.residuals[:-1]) < 2e-3
