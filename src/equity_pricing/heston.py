@@ -8,6 +8,7 @@ import numpy as np
 from scipy.integrate import quad
 
 from equity_pricing.black_scholes import discount_factor
+from equity_pricing.implied_vol import implied_vol_from_price
 from equity_pricing.types import FlatMarketInputs, HestonParams
 from equity_pricing.types import OptionSide, VanillaOption
 
@@ -224,3 +225,50 @@ def price_european(
         prices = call_prices - forward_intrinsic
 
     return float(prices[0]) if scalar_input else prices
+
+
+def model_smile(
+    strikes: np.ndarray,
+    maturity: float,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    *,
+    side: OptionSide = OptionSide.CALL,
+    fill_value: float = np.nan,
+    upper_limit: float = 200.0,
+    abs_tol: float = 1.0e-8,
+    rel_tol: float = 1.0e-8,
+    limit: int = 200,
+) -> np.ndarray:
+    """Return model-implied vols across a strike grid for a single expiry."""
+
+    strike_grid = np.asarray(strikes, dtype=float)
+    if strike_grid.ndim != 1:
+        raise ValueError(f"strikes must be a 1D array, got shape {strike_grid.shape!r}.")
+    if np.any(strike_grid <= 0.0):
+        raise ValueError("strikes must be positive.")
+    if maturity <= 0.0:
+        raise ValueError(f"maturity must be positive, got {maturity!r}.")
+
+    implied_vols = np.empty_like(strike_grid, dtype=float)
+
+    for index, strike in enumerate(strike_grid):
+        option = VanillaOption(strike=float(strike), maturity=maturity, side=side)
+        try:
+            price = price_european(
+                option,
+                market,
+                params,
+                upper_limit=upper_limit,
+                abs_tol=abs_tol,
+                rel_tol=rel_tol,
+                limit=limit,
+            )
+            implied_vols[index] = implied_vol_from_price(price, option, market)
+        except (RuntimeError, ValueError):
+            if np.isnan(fill_value):
+                implied_vols[index] = np.nan
+            else:
+                raise
+
+    return implied_vols

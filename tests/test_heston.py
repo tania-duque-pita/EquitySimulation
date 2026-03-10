@@ -11,6 +11,7 @@ from equity_pricing import (
     heston_characteristic_function,
     heston_lewis_integrand,
     integrate_heston_integrand,
+    model_smile,
     price_european,
     price_european_heston,
 )
@@ -230,3 +231,65 @@ def test_heston_put_price_supports_vector_strikes(
     assert isinstance(prices, np.ndarray)
     assert prices.shape == (2,)
     np.testing.assert_allclose(prices, np.array([5.45912403, 7.24243949]), rtol=1e-8, atol=1e-8)
+
+
+def test_heston_model_smile_returns_implied_vols_for_strike_grid(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    strikes = np.array([95.0, 100.0, 105.0])
+
+    smile = model_smile(strikes, 1.25, sample_market, sample_params)
+
+    assert smile.shape == (3,)
+    assert np.all(np.isfinite(smile))
+    np.testing.assert_allclose(smile, np.array([0.2033128, 0.19359116, 0.18470877]), rtol=1e-8, atol=1e-8)
+
+
+def test_heston_model_smile_put_and_call_match_implied_vols(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    strikes = np.array([95.0, 100.0])
+
+    call_smile = model_smile(strikes, 1.25, sample_market, sample_params, side=OptionSide.CALL)
+    put_smile = model_smile(strikes, 1.25, sample_market, sample_params, side=OptionSide.PUT)
+
+    np.testing.assert_allclose(call_smile, put_smile, rtol=1e-10, atol=1e-10)
+
+
+def test_heston_model_smile_returns_nan_on_inversion_failure(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing_inversion(*args, **kwargs) -> float:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("equity_pricing.heston.implied_vol_from_price", failing_inversion)
+
+    smile = model_smile(np.array([100.0]), 1.25, sample_market, sample_params)
+
+    assert np.isnan(smile[0])
+
+
+def test_heston_model_smile_can_raise_on_inversion_failure(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing_inversion(*args, **kwargs) -> float:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("equity_pricing.heston.implied_vol_from_price", failing_inversion)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        model_smile(np.array([100.0]), 1.25, sample_market, sample_params, fill_value=0.0)
+
+
+def test_heston_model_smile_rejects_non_1d_strikes(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    with pytest.raises(ValueError, match="1D"):
+        model_smile(np.array([[100.0, 105.0]]), 1.25, sample_market, sample_params)
