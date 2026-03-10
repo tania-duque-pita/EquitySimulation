@@ -24,7 +24,12 @@ from equity_pricing.heston import (
     price_european as price_european_heston,
 )
 from equity_pricing.implied_vol import implied_vol_from_price
-from equity_pricing.plots import plot_market_smile, plot_smile_fit
+from equity_pricing.plots import (
+    plot_market_smile,
+    plot_residual_heatmap,
+    plot_smile_fit,
+    plot_surface_fit,
+)
 from equity_pricing.types import (
     CalibrationSettings,
     CalibrationResult,
@@ -67,7 +72,9 @@ __all__ = [
     "surface_objective_from_unconstrained",
     "surface_residuals",
     "plot_market_smile",
+    "plot_residual_heatmap",
     "plot_smile_fit",
+    "plot_surface_fit",
 ]
 
 __version__ = "0.1.0"

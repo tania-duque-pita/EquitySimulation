@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from equity_pricing.types import CalibrationResult, MarketSmile
+from equity_pricing.types import CalibrationResult, MarketSmile, MarketSurface
 
 
 def plot_market_smile(
@@ -55,3 +56,75 @@ def plot_smile_fit(
     residual_axes.grid(True, axis="y", alpha=0.3)
 
     return figure, (smile_axes, residual_axes)
+
+
+def _surface_slices(surface: MarketSurface) -> list[slice]:
+    slices: list[slice] = []
+    start = 0
+    for smile in surface.smiles:
+        stop = start + len(smile.quotes)
+        slices.append(slice(start, stop))
+        start = stop
+    return slices
+
+
+def plot_surface_fit(
+    surface: MarketSurface,
+    result: CalibrationResult,
+    *,
+    title: str | None = None,
+) -> tuple[Figure, np.ndarray]:
+    """Plot market vs model smiles for each expiry in a calibrated surface."""
+
+    axes_count = len(surface.smiles)
+    figure, axes = plt.subplots(axes_count, 1, sharex=False, squeeze=False)
+    flat_axes = axes[:, 0]
+    slices = _surface_slices(surface)
+
+    for smile, quote_slice, axis in zip(surface.smiles, slices, flat_axes, strict=True):
+        axis.plot(smile.strikes, smile.implied_vols, marker="o", linestyle="-", label="Market")
+        axis.plot(smile.strikes, result.model_vols[quote_slice], marker="s", linestyle="--", label="Model")
+        axis.set_ylabel("Implied Vol")
+        axis.set_title(f"T={smile.maturity:.2f}")
+        axis.grid(True, alpha=0.3)
+
+    flat_axes[0].legend()
+    flat_axes[-1].set_xlabel("Strike")
+    if title is not None:
+        figure.suptitle(title)
+    figure.tight_layout()
+
+    return figure, flat_axes
+
+
+def plot_residual_heatmap(
+    surface: MarketSurface,
+    result: CalibrationResult,
+    *,
+    title: str | None = None,
+) -> tuple[Figure, Axes]:
+    """Plot a maturity-strike heatmap of model-minus-market residuals."""
+
+    slices = _surface_slices(surface)
+    strikes = np.unique(
+        np.concatenate([smile.strikes for smile in surface.smiles])
+    )
+    maturities = surface.maturities
+    heatmap = np.full((len(surface.smiles), len(strikes)), np.nan, dtype=float)
+
+    for row, (smile, quote_slice) in enumerate(zip(surface.smiles, slices, strict=True)):
+        residuals = result.model_vols[quote_slice] - result.market_vols[quote_slice]
+        for strike, residual in zip(smile.strikes, residuals, strict=True):
+            col = int(np.where(strikes == strike)[0][0])
+            heatmap[row, col] = residual
+
+    figure, axes = plt.subplots()
+    image = axes.imshow(heatmap, aspect="auto", interpolation="nearest")
+    axes.set_xticks(np.arange(len(strikes)), labels=[f"{strike:.0f}" for strike in strikes])
+    axes.set_yticks(np.arange(len(maturities)), labels=[f"{maturity:.2f}" for maturity in maturities])
+    axes.set_xlabel("Strike")
+    axes.set_ylabel("Maturity")
+    axes.set_title(title or "Residual Heatmap")
+    figure.colorbar(image, ax=axes, label="Residual")
+
+    return figure, axes
