@@ -9,9 +9,12 @@ from equity_pricing import (
     FlatMarketInputs,
     HestonParams,
     MarketSmile,
+    MarketSurface,
     SmileQuote,
     smile_objective_from_unconstrained,
     smile_residuals,
+    surface_objective_from_unconstrained,
+    surface_residuals,
 )
 
 
@@ -34,6 +37,27 @@ def sample_smile() -> MarketSmile:
 @pytest.fixture
 def sample_params() -> HestonParams:
     return HestonParams(kappa=1.7, theta=0.04, sigma=0.5, rho=-0.6, v0=0.05)
+
+
+@pytest.fixture
+def sample_surface() -> MarketSurface:
+    return MarketSurface(
+        smiles=(
+            MarketSmile(
+                quotes=(
+                    SmileQuote(strike=95.0, maturity=0.75, implied_vol=0.22),
+                    SmileQuote(strike=100.0, maturity=0.75, implied_vol=0.21),
+                )
+            ),
+            MarketSmile(
+                quotes=(
+                    SmileQuote(strike=95.0, maturity=1.25, implied_vol=0.21),
+                    SmileQuote(strike=100.0, maturity=1.25, implied_vol=0.20),
+                    SmileQuote(strike=105.0, maturity=1.25, implied_vol=0.19),
+                )
+            ),
+        )
+    )
 
 
 def test_calibration_settings_validate_inputs() -> None:
@@ -209,3 +233,68 @@ def test_calibration_result_error_metrics_match_residuals(
     assert result.rmse == pytest.approx(expected_rmse)
     assert result.mae == pytest.approx(expected_mae)
     assert result.max_abs_error == pytest.approx(expected_max_abs_error)
+
+
+def test_surface_residuals_stack_expiry_blocks_in_surface_order(
+    sample_surface: MarketSurface,
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    residuals = surface_residuals(sample_surface, sample_market, sample_params)
+
+    assert residuals.shape == (5,)
+    expected_first = smile_residuals(sample_surface.smiles[0], sample_market, sample_params)
+    expected_second = smile_residuals(sample_surface.smiles[1], sample_market, sample_params)
+    np.testing.assert_allclose(residuals[:2], expected_first, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(residuals[2:], expected_second, rtol=1e-10, atol=1e-10)
+
+
+def test_surface_residuals_apply_optional_expiry_weights(
+    sample_surface: MarketSurface,
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    weights = np.array([2.0, 0.5])
+    residuals = surface_residuals(sample_surface, sample_market, sample_params, expiry_weights=weights)
+
+    expected_first = 2.0 * smile_residuals(sample_surface.smiles[0], sample_market, sample_params)
+    expected_second = 0.5 * smile_residuals(sample_surface.smiles[1], sample_market, sample_params)
+    np.testing.assert_allclose(residuals[:2], expected_first, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(residuals[2:], expected_second, rtol=1e-10, atol=1e-10)
+
+
+def test_surface_residuals_reject_invalid_expiry_weights(
+    sample_surface: MarketSurface,
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    with pytest.raises(ValueError, match="shape"):
+        surface_residuals(
+            sample_surface,
+            sample_market,
+            sample_params,
+            expiry_weights=np.array([1.0]),
+        )
+
+    with pytest.raises(ValueError, match="positive"):
+        surface_residuals(
+            sample_surface,
+            sample_market,
+            sample_params,
+            expiry_weights=np.array([1.0, 0.0]),
+        )
+
+
+def test_surface_objective_from_unconstrained_matches_direct_surface_residuals(
+    sample_surface: MarketSurface,
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    direct = surface_residuals(sample_surface, sample_market, sample_params)
+    objective = surface_objective_from_unconstrained(
+        sample_params.to_unconstrained(),
+        sample_surface,
+        sample_market,
+    )
+
+    np.testing.assert_allclose(objective, direct, rtol=1e-10, atol=1e-10)

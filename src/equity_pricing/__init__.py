@@ -11,6 +11,8 @@ from equity_pricing.calibration import (
     calibrate_smile,
     smile_objective_from_unconstrained,
     smile_residuals,
+    surface_objective_from_unconstrained,
+    surface_residuals,
 )
 from equity_pricing.heston import (
     heston_characteristic_function,
@@ -60,6 +62,8 @@ __all__ = [
     "calibrate_smile",
     "smile_objective_from_unconstrained",
     "smile_residuals",
+    "surface_objective_from_unconstrained",
+    "surface_residuals",
     "plot_market_smile",
 ]
 

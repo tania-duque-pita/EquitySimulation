@@ -12,6 +12,7 @@ from equity_pricing.types import (
     FlatMarketInputs,
     HestonParams,
     MarketSmile,
+    MarketSurface,
 )
 
 
@@ -97,6 +98,48 @@ def smile_objective_from_unconstrained(
 
     params = HestonParams.from_unconstrained(values)
     return smile_residuals(smile, market, params, settings)
+
+
+def surface_residuals(
+    surface: MarketSurface,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    settings: CalibrationSettings | None = None,
+    expiry_weights: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return stacked surface residuals with optional per-expiry weights."""
+
+    calibration_settings = settings or CalibrationSettings()
+    if expiry_weights is None:
+        weights = np.ones(len(surface.smiles), dtype=float)
+    else:
+        weights = np.asarray(expiry_weights, dtype=float)
+        if weights.shape != (len(surface.smiles),):
+            raise ValueError(
+                "expiry_weights must have shape "
+                f"({len(surface.smiles)},), got {weights.shape!r}."
+            )
+        if np.any(weights <= 0.0):
+            raise ValueError("expiry_weights must be positive.")
+
+    residual_blocks = [
+        weight * smile_residuals(smile, market, params, calibration_settings)
+        for smile, weight in zip(surface.smiles, weights, strict=True)
+    ]
+    return np.concatenate(residual_blocks)
+
+
+def surface_objective_from_unconstrained(
+    values: np.ndarray,
+    surface: MarketSurface,
+    market: FlatMarketInputs,
+    settings: CalibrationSettings | None = None,
+    expiry_weights: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return stacked surface residuals from an unconstrained parameter vector."""
+
+    params = HestonParams.from_unconstrained(values)
+    return surface_residuals(surface, market, params, settings, expiry_weights)
 
 
 def calibrate_smile(
