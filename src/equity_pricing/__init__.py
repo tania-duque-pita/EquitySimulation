@@ -8,6 +8,7 @@ from equity_pricing.black_scholes import (
     vega,
 )
 from equity_pricing.implied_vol import implied_vol_from_price
+from equity_pricing.plots import plot_market_smile
 from equity_pricing.types import (
     FlatMarketInputs,
     MarketSmile,
@@ -29,6 +30,7 @@ __all__ = [
     "price_european",
     "vega",
     "implied_vol_from_price",
+    "plot_market_smile",
 ]
 
 __version__ = "0.1.0"
