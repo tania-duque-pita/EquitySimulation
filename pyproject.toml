@@ -1,40 +1,15 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "equity-pricing"
 version = "0.1.0"
-description = "Python framework for Heston calibration and vanilla equity option pricing."
-readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "Tania" }]
-dependencies = [
-    "matplotlib>=3.8",
-    "numpy>=1.26",
-    "scipy>=1.11",
-]
+dependencies = ["numpy", "scipy", "matplotlib"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "ruff>=0.3",
-]
-
-[tool.setuptools]
-package-dir = { "" = "src" }
+dev = ["pytest", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.pytest.ini_options]
-minversion = "8.0"
-testpaths = ["tests"]
-
-[tool.ruff]
-target-version = "py311"
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-
