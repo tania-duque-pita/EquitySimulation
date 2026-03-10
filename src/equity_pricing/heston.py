@@ -10,7 +10,7 @@ from scipy.integrate import IntegrationWarning, quad
 
 from equity_pricing.black_scholes import discount_factor
 from equity_pricing.implied_vol import implied_vol_from_price
-from equity_pricing.types import FlatMarketInputs, HestonParams
+from equity_pricing.types import FlatMarketInputs, HestonParams, MarketSmile, MarketSurface, SmileQuote
 from equity_pricing.types import OptionSide, VanillaOption
 
 
@@ -280,3 +280,47 @@ def model_smile(
                 raise
 
     return implied_vols
+
+
+def model_surface(
+    strikes_by_expiry: tuple[np.ndarray, ...],
+    maturities: np.ndarray,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    *,
+    side: OptionSide = OptionSide.CALL,
+    fill_value: float = np.nan,
+    upper_limit: float = 200.0,
+    abs_tol: float = 1.0e-8,
+    rel_tol: float = 1.0e-8,
+    limit: int = 200,
+) -> MarketSurface:
+    """Return a Heston-implied volatility surface as ordered market-smile slices."""
+
+    maturity_grid = np.asarray(maturities, dtype=float)
+    if maturity_grid.ndim != 1:
+        raise ValueError(f"maturities must be a 1D array, got shape {maturity_grid.shape!r}.")
+    if len(strikes_by_expiry) != maturity_grid.size:
+        raise ValueError("strikes_by_expiry and maturities must have the same length.")
+
+    smiles: list[MarketSmile] = []
+    for strikes, maturity in zip(strikes_by_expiry, maturity_grid, strict=True):
+        implied_vols = model_smile(
+            np.asarray(strikes, dtype=float),
+            float(maturity),
+            market,
+            params,
+            side=side,
+            fill_value=fill_value,
+            upper_limit=upper_limit,
+            abs_tol=abs_tol,
+            rel_tol=rel_tol,
+            limit=limit,
+        )
+        quotes = tuple(
+            SmileQuote(strike=float(strike), maturity=float(maturity), implied_vol=float(implied_vol))
+            for strike, implied_vol in zip(np.asarray(strikes, dtype=float), implied_vols, strict=True)
+        )
+        smiles.append(MarketSmile(quotes))
+
+    return MarketSurface(tuple(smiles))

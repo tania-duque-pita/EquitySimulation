@@ -12,6 +12,8 @@ from equity_pricing import (
     heston_lewis_integrand,
     integrate_heston_integrand,
     model_smile,
+    model_surface,
+    MarketSurface,
     price_european,
     price_european_heston,
 )
@@ -293,3 +295,53 @@ def test_heston_model_smile_rejects_non_1d_strikes(
 ) -> None:
     with pytest.raises(ValueError, match="1D"):
         model_smile(np.array([[100.0, 105.0]]), 1.25, sample_market, sample_params)
+
+
+def test_heston_model_surface_returns_ordered_surface(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    surface = model_surface(
+        strikes_by_expiry=(
+            np.array([95.0, 100.0]),
+            np.array([90.0, 100.0, 110.0]),
+        ),
+        maturities=np.array([1.5, 0.75]),
+        market=sample_market,
+        params=sample_params,
+    )
+
+    assert isinstance(surface, MarketSurface)
+    np.testing.assert_allclose(surface.maturities, np.array([0.75, 1.5]))
+    assert surface.smiles[0].strikes.shape == (3,)
+    assert surface.smiles[1].strikes.shape == (2,)
+
+
+def test_heston_model_surface_matches_per_expiry_smiles(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    strikes_by_expiry = (
+        np.array([95.0, 100.0]),
+        np.array([95.0, 100.0]),
+    )
+    maturities = np.array([0.75, 1.5])
+
+    surface = model_surface(strikes_by_expiry, maturities, sample_market, sample_params)
+
+    for smile, strikes, maturity in zip(surface.smiles, strikes_by_expiry, maturities, strict=True):
+        expected = model_smile(strikes, maturity, sample_market, sample_params)
+        np.testing.assert_allclose(smile.implied_vols, expected, rtol=1e-10, atol=1e-10)
+
+
+def test_heston_model_surface_rejects_length_mismatch(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    with pytest.raises(ValueError, match="same length"):
+        model_surface(
+            strikes_by_expiry=(np.array([95.0, 100.0]),),
+            maturities=np.array([0.5, 1.0]),
+            market=sample_market,
+            params=sample_params,
+        )

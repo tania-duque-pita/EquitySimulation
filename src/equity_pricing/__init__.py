@@ -17,6 +17,7 @@ from equity_pricing.heston import (
     heston_lewis_integrand,
     integrate_heston_integrand,
     model_smile,
+    model_surface,
     price_european as price_european_heston,
 )
 from equity_pricing.implied_vol import implied_vol_from_price
@@ -53,6 +54,7 @@ __all__ = [
     "heston_lewis_integrand",
     "integrate_heston_integrand",
     "model_smile",
+    "model_surface",
     "price_european_heston",
     "implied_vol_from_price",
     "calibrate_smile",
