@@ -8,6 +8,7 @@ from equity_pricing.black_scholes import (
     vega,
 )
 from equity_pricing.heston import heston_characteristic_function
+from equity_pricing.heston import heston_lewis_integrand, integrate_heston_integrand
 from equity_pricing.implied_vol import implied_vol_from_price
 from equity_pricing.plots import plot_market_smile
 from equity_pricing.types import (
@@ -33,6 +34,8 @@ __all__ = [
     "price_european",
     "vega",
     "heston_characteristic_function",
+    "heston_lewis_integrand",
+    "integrate_heston_integrand",
     "implied_vol_from_price",
     "plot_market_smile",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.integrate import quad
 
 from equity_pricing.types import FlatMarketInputs, HestonParams
 
@@ -51,3 +52,53 @@ def heston_characteristic_function(
     values = np.exp(c_term + d_term * v0)
 
     return complex(values) if scalar_input else values
+
+
+def heston_lewis_integrand(
+    u: float | np.ndarray,
+    log_moneyness: float,
+    maturity: float,
+    market: FlatMarketInputs,
+    params: HestonParams,
+) -> float | np.ndarray:
+    """Return the damped Lewis-style Heston pricing integrand."""
+
+    grid = np.asarray(u, dtype=float)
+    if np.any(grid < 0.0):
+        raise ValueError("integration variable u must be non-negative.")
+
+    shifted_argument = grid - 0.5j
+    characteristic_values = heston_characteristic_function(
+        shifted_argument,
+        maturity,
+        market,
+        params,
+    )
+    phase = np.exp(-1j * grid * log_moneyness)
+    values = np.real(phase * characteristic_values / (grid * grid + 0.25))
+
+    return float(values) if np.ndim(values) == 0 else values
+
+
+def integrate_heston_integrand(
+    integrand,
+    *,
+    upper_limit: float = 200.0,
+    abs_tol: float = 1.0e-8,
+    rel_tol: float = 1.0e-8,
+    limit: int = 200,
+) -> tuple[float, float]:
+    """Numerically integrate a Heston-style scalar integrand on [0, upper_limit]."""
+
+    if upper_limit <= 0.0:
+        raise ValueError(f"upper_limit must be positive, got {upper_limit!r}.")
+
+    value, error = quad(
+        integrand,
+        0.0,
+        upper_limit,
+        epsabs=abs_tol,
+        epsrel=rel_tol,
+        limit=limit,
+    )
+    return float(value), float(error)

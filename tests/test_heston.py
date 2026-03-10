@@ -1,7 +1,15 @@
+import math
+
 import numpy as np
 import pytest
 
-from equity_pricing import FlatMarketInputs, HestonParams, heston_characteristic_function
+from equity_pricing import (
+    FlatMarketInputs,
+    HestonParams,
+    heston_characteristic_function,
+    heston_lewis_integrand,
+    integrate_heston_integrand,
+)
 
 
 @pytest.fixture
@@ -80,3 +88,64 @@ def test_heston_characteristic_function_rejects_non_positive_maturity(
 ) -> None:
     with pytest.raises(ValueError, match="maturity must be positive"):
         heston_characteristic_function(0.1, 0.0, sample_market, sample_params)
+
+
+def test_heston_lewis_integrand_returns_finite_values(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    values = heston_lewis_integrand(
+        np.array([0.0, 0.25, 1.0, 5.0]),
+        log_moneyness=0.0,
+        maturity=1.25,
+        market=sample_market,
+        params=sample_params,
+    )
+
+    assert np.all(np.isfinite(values))
+
+
+def test_heston_lewis_integrand_rejects_negative_u(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        heston_lewis_integrand(
+            -0.1,
+            log_moneyness=0.0,
+            maturity=1.25,
+            market=sample_market,
+            params=sample_params,
+        )
+
+
+def test_integrate_heston_integrand_matches_known_integral() -> None:
+    value, error = integrate_heston_integrand(lambda u: math.exp(-u), upper_limit=50.0)
+
+    assert value == pytest.approx(1.0, rel=1e-8, abs=1e-8)
+    assert error < 1e-8
+
+
+def test_integrate_heston_integrand_rejects_non_positive_upper_limit() -> None:
+    with pytest.raises(ValueError, match="upper_limit must be positive"):
+        integrate_heston_integrand(lambda u: u, upper_limit=0.0)
+
+
+def test_heston_lewis_integrand_can_be_integrated(
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    value, error = integrate_heston_integrand(
+        lambda u: heston_lewis_integrand(
+            u,
+            log_moneyness=0.0,
+            maturity=1.25,
+            market=sample_market,
+            params=sample_params,
+        ),
+        upper_limit=100.0,
+    )
+
+    assert math.isfinite(value)
+    assert value > 0.0
+    assert error >= 0.0
