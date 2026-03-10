@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.optimize import least_squares
 
 from equity_pricing.heston import model_smile
-from equity_pricing.types import CalibrationSettings, FlatMarketInputs, HestonParams, MarketSmile
+from equity_pricing.types import (
+    CalibrationResult,
+    CalibrationSettings,
+    FlatMarketInputs,
+    HestonParams,
+    MarketSmile,
+)
 
 
 def smile_residuals(
@@ -43,3 +50,33 @@ def smile_objective_from_unconstrained(
 
     params = HestonParams.from_unconstrained(values)
     return smile_residuals(smile, market, params, settings)
+
+
+def calibrate_smile(
+    smile: MarketSmile,
+    market: FlatMarketInputs,
+    initial_params: HestonParams,
+    settings: CalibrationSettings | None = None,
+) -> CalibrationResult:
+    """Calibrate Heston parameters to a single market smile."""
+
+    calibration_settings = settings or CalibrationSettings()
+    result = least_squares(
+        smile_objective_from_unconstrained,
+        x0=initial_params.to_unconstrained(),
+        args=(smile, market, calibration_settings),
+        method="trf",
+    )
+
+    calibrated_params = HestonParams.from_unconstrained(result.x)
+    residuals = smile_residuals(smile, market, calibrated_params, calibration_settings)
+    objective_value = 0.5 * float(np.dot(residuals, residuals))
+
+    return CalibrationResult(
+        params=calibrated_params,
+        residuals=residuals,
+        objective_value=objective_value,
+        success=bool(result.success),
+        nfev=int(result.nfev),
+        message=str(result.message),
+    )

@@ -7,7 +7,11 @@ from equity_pricing.black_scholes import (
     price_european,
     vega,
 )
-from equity_pricing.calibration import smile_objective_from_unconstrained, smile_residuals
+from equity_pricing.calibration import (
+    calibrate_smile,
+    smile_objective_from_unconstrained,
+    smile_residuals,
+)
 from equity_pricing.heston import (
     heston_characteristic_function,
     heston_lewis_integrand,
@@ -19,6 +23,7 @@ from equity_pricing.implied_vol import implied_vol_from_price
 from equity_pricing.plots import plot_market_smile
 from equity_pricing.types import (
     CalibrationSettings,
+    CalibrationResult,
     FlatMarketInputs,
     HestonParams,
     MarketSmile,
@@ -30,6 +35,7 @@ from equity_pricing.types import (
 __all__ = [
     "__version__",
     "CalibrationSettings",
+    "CalibrationResult",
     "FlatMarketInputs",
     "HestonParams",
     "MarketSmile",
@@ -47,6 +53,7 @@ __all__ = [
     "model_smile",
     "price_european_heston",
     "implied_vol_from_price",
+    "calibrate_smile",
     "smile_objective_from_unconstrained",
     "smile_residuals",
     "plot_market_smile",

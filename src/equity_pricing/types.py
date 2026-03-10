@@ -195,3 +195,15 @@ class CalibrationSettings:
             raise ValueError(
                 f"integration_limit must be positive, got {self.integration_limit!r}."
             )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationResult:
+    """Result of a Heston calibration run."""
+
+    params: HestonParams
+    residuals: np.ndarray
+    objective_value: float
+    success: bool
+    nfev: int
+    message: str

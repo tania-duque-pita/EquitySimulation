@@ -2,7 +2,10 @@ import numpy as np
 import pytest
 
 from equity_pricing import (
+    calibrate_smile,
+    model_smile,
     CalibrationSettings,
+    CalibrationResult,
     FlatMarketInputs,
     HestonParams,
     MarketSmile,
@@ -96,3 +99,43 @@ def test_smile_objective_from_unconstrained_matches_direct_residuals(
     )
 
     np.testing.assert_allclose(objective, direct, rtol=1e-10, atol=1e-10)
+
+
+def test_calibrate_smile_returns_structured_result(
+    sample_smile: MarketSmile,
+    sample_market: FlatMarketInputs,
+    sample_params: HestonParams,
+) -> None:
+    result = calibrate_smile(sample_smile, sample_market, sample_params)
+
+    assert isinstance(result, CalibrationResult)
+    assert isinstance(result.params, HestonParams)
+    assert result.residuals.shape == sample_smile.implied_vols.shape
+    assert result.objective_value >= 0.0
+    assert result.nfev > 0
+    assert isinstance(result.message, str)
+
+
+def test_calibrate_smile_recovers_synthetic_parameters() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.03, dividend_yield=0.01)
+    true_params = HestonParams(kappa=1.6, theta=0.05, sigma=0.45, rho=-0.55, v0=0.045)
+    strikes = np.array([85.0, 92.5, 100.0, 107.5, 115.0])
+    target_vols = model_smile(strikes, 1.0, market, true_params)
+    smile = MarketSmile(
+        tuple(
+            SmileQuote(strike=float(strike), maturity=1.0, implied_vol=float(vol))
+            for strike, vol in zip(strikes, target_vols, strict=True)
+        )
+    )
+    initial_params = HestonParams(kappa=1.2, theta=0.04, sigma=0.6, rho=-0.3, v0=0.04)
+
+    result = calibrate_smile(smile, market, initial_params)
+
+    assert result.success
+    np.testing.assert_allclose(
+        result.params.as_array(),
+        true_params.as_array(),
+        rtol=2.5e-1,
+        atol=5.0e-3,
+    )
+    assert np.linalg.norm(result.residuals) < 1e-3
