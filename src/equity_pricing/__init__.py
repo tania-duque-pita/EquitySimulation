@@ -15,6 +15,7 @@ from equity_pricing.calibration import (
     surface_objective_from_unconstrained,
     surface_residuals,
 )
+from equity_pricing.examples import run_end_to_end_example
 from equity_pricing.heston import (
     heston_characteristic_function,
     heston_lewis_integrand,
@@ -68,6 +69,7 @@ __all__ = [
     "price_bounds",
     "price_european",
     "vega",
+    "run_end_to_end_example",
     "heston_characteristic_function",
     "heston_lewis_integrand",
     "integrate_heston_integrand",
