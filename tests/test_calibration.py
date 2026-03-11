@@ -147,7 +147,7 @@ def test_calibrate_smile_returns_structured_result(
     assert result.max_abs_error >= 0.0
     assert result.nfev > 0
     assert isinstance(result.message, str)
-    assert result.n_restarts == 4
+    assert result.n_restarts == 3
 
 
 def test_calibrate_smile_recovers_synthetic_parameters() -> None:
@@ -178,23 +178,6 @@ def test_calibrate_smile_recovers_synthetic_parameters() -> None:
     assert result.max_abs_error < 1e-3
 
 
-def test_smile_residuals_append_feller_penalty_when_enabled(
-    sample_smile: MarketSmile,
-    sample_market: FlatMarketInputs,
-) -> None:
-    violating_params = HestonParams(kappa=0.5, theta=0.04, sigma=1.0, rho=-0.6, v0=0.05)
-
-    residuals = smile_residuals(
-        sample_smile,
-        sample_market,
-        violating_params,
-        CalibrationSettings(enable_feller_penalty=True, feller_penalty_weight=2.0),
-    )
-
-    assert residuals.shape == (4,)
-    assert residuals[-1] > 0.0
-
-
 def test_calibrate_smile_with_restarts_recovers_from_poor_initial_guess() -> None:
     market = FlatMarketInputs(spot=100.0, risk_free_rate=0.03, dividend_yield=0.01)
     true_params = HestonParams(kappa=1.6, theta=0.05, sigma=0.45, rho=-0.55, v0=0.045)
@@ -212,12 +195,12 @@ def test_calibrate_smile_with_restarts_recovers_from_poor_initial_guess() -> Non
         smile,
         market,
         poor_initial_params,
-        CalibrationSettings(n_restarts=4, enable_feller_penalty=True, feller_penalty_weight=0.1),
+        CalibrationSettings(n_restarts=3),
     )
 
     assert result.success
-    assert result.n_restarts == 4
-    assert np.linalg.norm(result.residuals[:-1]) < 2e-3
+    assert result.n_restarts == 3
+    assert np.linalg.norm(result.residuals) < 2e-3
 
 
 def test_calibration_result_error_metrics_match_residuals(
@@ -313,7 +296,7 @@ def test_calibrate_surface_returns_structured_result(
     assert result.market_vols.shape == (5,)
     assert result.objective_value >= 0.0
     assert result.rmse >= 0.0
-    assert result.n_restarts == 8
+    assert result.n_restarts == 3
 
 
 def test_calibrate_surface_recovers_synthetic_parameters() -> None:

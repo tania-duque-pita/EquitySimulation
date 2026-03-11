@@ -3,7 +3,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 
-from equity_pricing.examples import run_end_to_end_example
+from examples.examples import run_end_to_end_example
 
 
 def test_run_end_to_end_example_smoke() -> None:

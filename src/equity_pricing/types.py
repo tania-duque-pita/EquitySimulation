@@ -9,12 +9,12 @@ from typing import Tuple
 import numpy as np
 
 
-def _require_positive(value: float, name: str) -> None:
+def _require_positive(value: float|int, name: str) -> None:
     if value <= 0.0:
         raise ValueError(f"{name} must be positive, got {value!r}.")
 
 
-def _require_non_negative(value: float, name: str) -> None:
+def _require_non_negative(value: float|int, name: str) -> None:
     if value < 0.0:
         raise ValueError(f"{name} must be non-negative, got {value!r}.")
 
@@ -207,22 +207,15 @@ class CalibrationSettings:
     abs_tol: float = 1.0e-8
     rel_tol: float = 1.0e-8
     integration_limit: int = 200
-    n_restarts: int = 4
-    enable_feller_penalty: bool = False
-    feller_penalty_weight: float = 1.0
+    n_restarts: int = 3
 
     def __post_init__(self) -> None:
         _require_positive(self.nan_penalty, "nan_penalty")
         _require_positive(self.upper_limit, "upper_limit")
         _require_positive(self.abs_tol, "abs_tol")
         _require_positive(self.rel_tol, "rel_tol")
-        if self.integration_limit <= 0:
-            raise ValueError(
-                f"integration_limit must be positive, got {self.integration_limit!r}."
-            )
-        if self.n_restarts <= 0:
-            raise ValueError(f"n_restarts must be positive, got {self.n_restarts!r}.")
-        _require_positive(self.feller_penalty_weight, "feller_penalty_weight")
+        _require_positive(self.integration_limit, "integration_limit")
+        _require_positive(self.n_restarts, "n_restarts")
 
 
 @dataclass(frozen=True, slots=True)
