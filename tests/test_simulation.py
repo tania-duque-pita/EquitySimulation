@@ -10,6 +10,7 @@ from equity_pricing import (
     draw_correlated_normals,
     make_rng,
     make_time_grid,
+    price_european_heston,
     price_vanilla_mc,
     simulate_heston_paths,
 )
@@ -433,3 +434,39 @@ def test_price_vanilla_mc_rejects_invalid_inputs() -> None:
             n_paths=2_000,
             confidence_level=1.0,
         )
+
+
+@pytest.mark.parametrize(
+    ("option", "seed"),
+    [
+        (VanillaOption(strike=100.0, maturity=1.0, side=OptionSide.CALL), 2025),
+        (VanillaOption(strike=100.0, maturity=0.5, side=OptionSide.CALL), 2026),
+    ],
+)
+def test_price_vanilla_mc_confidence_interval_contains_heston_price(
+    option: VanillaOption,
+    seed: int,
+) -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
+    params = HestonParams(kappa=2.5, theta=0.04, sigma=0.2, rho=-0.3, v0=0.04)
+
+    mc_result = price_vanilla_mc(
+        option=option,
+        market=market,
+        params=params,
+        steps=48,
+        n_paths=12_000,
+        seed=seed,
+        confidence_level=0.99,
+    )
+    analytic_price = price_european_heston(
+        option,
+        market,
+        params,
+        upper_limit=150.0,
+        abs_tol=1.0e-7,
+        rel_tol=1.0e-7,
+    )
+
+    assert mc_result.confidence_interval[0] <= analytic_price <= mc_result.confidence_interval[1]
+    assert abs(mc_result.price - analytic_price) <= 3.0 * mc_result.standard_error
