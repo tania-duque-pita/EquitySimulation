@@ -35,6 +35,7 @@ from equity_pricing.simulation import (
     make_rng,
     make_time_grid,
     qe_variance_step,
+    simulate_heston_paths,
 )
 from equity_pricing.types import (
     CalibrationSettings,
@@ -85,6 +86,7 @@ __all__ = [
     "make_rng",
     "make_time_grid",
     "qe_variance_step",
+    "simulate_heston_paths",
 ]
 
 __version__ = "0.1.0"

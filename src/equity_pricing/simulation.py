@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from equity_pricing.types import HestonParams
+from equity_pricing.types import FlatMarketInputs, HestonParams
 
 
 def make_time_grid(maturity: float, steps: int) -> np.ndarray:
@@ -110,3 +110,97 @@ def qe_variance_step(
         next_variance[exponential_mask] = np.where(u_e <= p, 0.0, draws)
 
     return np.maximum(next_variance, 0.0)
+
+
+def simulate_heston_paths(
+    market: FlatMarketInputs,
+    params: HestonParams,
+    maturity: float,
+    steps: int,
+    n_paths: int,
+    seed: int | None = None,
+    antithetic: bool = True,
+    psi_threshold: float = 1.5,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Simulate Heston spot and variance paths using QE variance updates."""
+
+    if maturity <= 0.0:
+        raise ValueError(f"maturity must be positive, got {maturity!r}.")
+    if steps <= 0:
+        raise ValueError(f"steps must be positive, got {steps!r}.")
+    if n_paths <= 0:
+        raise ValueError(f"n_paths must be positive, got {n_paths!r}.")
+
+    time_grid = make_time_grid(maturity, steps)
+    dt = maturity / steps
+    rng = make_rng(seed)
+
+    effective_paths = n_paths
+    base_paths = n_paths
+    if antithetic:
+        base_paths = (n_paths + 1) // 2
+        effective_paths = 2 * base_paths
+
+    z_var_base, z_spot_base = draw_correlated_normals(
+        rng,
+        rho=params.rho,
+        steps=steps,
+        n_paths=base_paths,
+    )
+    u_base = rng.uniform(size=(steps, base_paths))
+
+    if antithetic:
+        z_var = np.concatenate([z_var_base, -z_var_base], axis=1)[:, :effective_paths]
+        z_spot = np.concatenate([z_spot_base, -z_spot_base], axis=1)[:, :effective_paths]
+        u = np.concatenate([u_base, 1.0 - u_base], axis=1)[:, :effective_paths]
+    else:
+        z_var = z_var_base
+        z_spot = z_spot_base
+        u = u_base
+
+    spot_paths = np.empty((steps + 1, effective_paths), dtype=float)
+    variance_paths = np.empty((steps + 1, effective_paths), dtype=float)
+
+    spot_paths[0] = market.spot
+    variance_paths[0] = params.v0
+
+    drift = market.risk_free_rate - market.dividend_yield
+    gamma1 = 0.5
+    gamma2 = 0.5
+    rho2_complement = max(1.0 - params.rho * params.rho, 1.0e-16)
+    k0 = -params.rho * params.kappa * params.theta * dt / params.sigma
+    k1 = gamma1 * dt * (params.kappa * params.rho / params.sigma - 0.5) - (
+        params.rho / params.sigma
+    )
+    k2 = gamma2 * dt * (params.kappa * params.rho / params.sigma - 0.5) + (
+        params.rho / params.sigma
+    )
+    k3 = gamma1 * dt * rho2_complement
+    k4 = gamma2 * dt * rho2_complement
+
+    for index in range(steps):
+        v_t = variance_paths[index]
+        v_next = qe_variance_step(
+            variance=v_t,
+            dt=dt,
+            params=params,
+            normal_shocks=z_var[index],
+            uniform_shocks=u[index],
+            psi_threshold=psi_threshold,
+        )
+        variance_paths[index + 1] = v_next
+
+        log_increment = (
+            drift * dt
+            + k0
+            + k1 * v_t
+            + k2 * v_next
+            + np.sqrt(np.maximum(k3 * v_t + k4 * v_next, 0.0)) * z_spot[index]
+        )
+        spot_paths[index + 1] = spot_paths[index] * np.exp(log_increment)
+
+    if antithetic:
+        spot_paths = spot_paths[:, :n_paths]
+        variance_paths = variance_paths[:, :n_paths]
+
+    return time_grid, spot_paths, variance_paths

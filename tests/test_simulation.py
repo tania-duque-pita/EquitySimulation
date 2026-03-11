@@ -1,7 +1,14 @@
 import numpy as np
 import pytest
 
-from equity_pricing import HestonParams, draw_correlated_normals, make_rng, make_time_grid
+from equity_pricing import (
+    FlatMarketInputs,
+    HestonParams,
+    draw_correlated_normals,
+    make_rng,
+    make_time_grid,
+    simulate_heston_paths,
+)
 from equity_pricing.simulation import qe_variance_step
 
 
@@ -197,4 +204,135 @@ def test_qe_variance_step_rejects_invalid_inputs() -> None:
             params=params,
             normal_shocks=np.array([0.0]),
             uniform_shocks=np.array([1.0]),
+        )
+
+
+def test_simulate_heston_paths_returns_expected_shapes() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
+    params = HestonParams(kappa=1.8, theta=0.04, sigma=0.5, rho=-0.6, v0=0.05)
+
+    time_grid, spot_paths, variance_paths = simulate_heston_paths(
+        market=market,
+        params=params,
+        maturity=1.0,
+        steps=8,
+        n_paths=7,
+        seed=123,
+    )
+
+    assert time_grid.shape == (9,)
+    assert spot_paths.shape == (9, 7)
+    assert variance_paths.shape == (9, 7)
+    np.testing.assert_allclose(spot_paths[0], market.spot)
+    np.testing.assert_allclose(variance_paths[0], params.v0)
+    assert np.all(variance_paths >= 0.0)
+
+
+def test_simulate_heston_paths_is_reproducible_for_same_seed() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
+    params = HestonParams(kappa=1.8, theta=0.04, sigma=0.5, rho=-0.6, v0=0.05)
+
+    result1 = simulate_heston_paths(
+        market=market,
+        params=params,
+        maturity=1.0,
+        steps=6,
+        n_paths=5,
+        seed=99,
+    )
+    result2 = simulate_heston_paths(
+        market=market,
+        params=params,
+        maturity=1.0,
+        steps=6,
+        n_paths=5,
+        seed=99,
+    )
+
+    for array1, array2 in zip(result1, result2, strict=True):
+        np.testing.assert_allclose(array1, array2)
+
+
+def test_simulate_heston_paths_antithetic_and_plain_modes_both_work() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.01, dividend_yield=0.0)
+    params = HestonParams(kappa=2.0, theta=0.04, sigma=0.4, rho=-0.5, v0=0.04)
+
+    _, spot_plain, variance_plain = simulate_heston_paths(
+        market=market,
+        params=params,
+        maturity=0.5,
+        steps=4,
+        n_paths=5,
+        seed=321,
+        antithetic=False,
+    )
+    _, spot_anti, variance_anti = simulate_heston_paths(
+        market=market,
+        params=params,
+        maturity=0.5,
+        steps=4,
+        n_paths=5,
+        seed=321,
+        antithetic=True,
+    )
+
+    assert spot_plain.shape == (5, 5)
+    assert variance_plain.shape == (5, 5)
+    assert spot_anti.shape == (5, 5)
+    assert variance_anti.shape == (5, 5)
+    assert np.all(variance_plain >= 0.0)
+    assert np.all(variance_anti >= 0.0)
+
+
+def test_simulate_heston_paths_mean_terminal_spot_is_close_to_forward_when_vol_of_vol_is_small() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.03, dividend_yield=0.01)
+    params = HestonParams(kappa=6.0, theta=0.04, sigma=0.05, rho=-0.3, v0=0.04)
+
+    _, spot_paths, variance_paths = simulate_heston_paths(
+        market=market,
+        params=params,
+        maturity=1.0,
+        steps=64,
+        n_paths=20_000,
+        seed=2024,
+    )
+
+    terminal_mean = float(np.mean(spot_paths[-1]))
+    target_forward = market.spot * np.exp(
+        (market.risk_free_rate - market.dividend_yield) * 1.0
+    )
+
+    assert terminal_mean == pytest.approx(target_forward, rel=0.02)
+    assert np.all(variance_paths >= 0.0)
+
+
+def test_simulate_heston_paths_rejects_invalid_inputs() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
+    params = HestonParams(kappa=1.8, theta=0.04, sigma=0.5, rho=-0.6, v0=0.05)
+
+    with pytest.raises(ValueError, match="maturity must be positive"):
+        simulate_heston_paths(
+            market=market,
+            params=params,
+            maturity=0.0,
+            steps=8,
+            n_paths=7,
+        )
+
+    with pytest.raises(ValueError, match="steps must be positive"):
+        simulate_heston_paths(
+            market=market,
+            params=params,
+            maturity=1.0,
+            steps=0,
+            n_paths=7,
+        )
+
+    with pytest.raises(ValueError, match="n_paths must be positive"):
+        simulate_heston_paths(
+            market=market,
+            params=params,
+            maturity=1.0,
+            steps=8,
+            n_paths=0,
         )
