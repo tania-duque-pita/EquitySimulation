@@ -4,9 +4,13 @@ import pytest
 from equity_pricing import (
     FlatMarketInputs,
     HestonParams,
+    MonteCarloResult,
+    OptionSide,
+    VanillaOption,
     draw_correlated_normals,
     make_rng,
     make_time_grid,
+    price_vanilla_mc,
     simulate_heston_paths,
 )
 from equity_pricing.simulation import qe_variance_step
@@ -335,4 +339,97 @@ def test_simulate_heston_paths_rejects_invalid_inputs() -> None:
             maturity=1.0,
             steps=8,
             n_paths=0,
+        )
+
+
+def test_price_vanilla_mc_returns_structured_result() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
+    params = HestonParams(kappa=1.8, theta=0.04, sigma=0.5, rho=-0.6, v0=0.05)
+    option = VanillaOption(strike=100.0, maturity=1.0, side=OptionSide.CALL)
+
+    result = price_vanilla_mc(
+        option=option,
+        market=market,
+        params=params,
+        steps=32,
+        n_paths=2_000,
+        seed=123,
+    )
+
+    assert isinstance(result, MonteCarloResult)
+    assert result.n_paths == 2_000
+    assert result.discounted_payoffs.shape == (2_000,)
+    assert result.standard_error > 0.0
+    assert result.confidence_interval[0] <= result.price <= result.confidence_interval[1]
+
+
+def test_price_vanilla_mc_matches_discounted_intrinsic_in_nearly_deterministic_case() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.03, dividend_yield=0.01)
+    params = HestonParams(kappa=20.0, theta=1.0e-6, sigma=1.0e-6, rho=0.0, v0=1.0e-6)
+    option = VanillaOption(strike=95.0, maturity=1.0, side=OptionSide.CALL)
+
+    result = price_vanilla_mc(
+        option=option,
+        market=market,
+        params=params,
+        steps=16,
+        n_paths=4_000,
+        seed=999,
+    )
+
+    deterministic_terminal_spot = market.spot * np.exp(
+        (market.risk_free_rate - market.dividend_yield) * option.maturity
+    )
+    target_price = np.exp(-market.risk_free_rate * option.maturity) * max(
+        deterministic_terminal_spot - float(option.strike),
+        0.0,
+    )
+
+    assert result.price == pytest.approx(target_price, rel=0.02)
+    assert result.standard_error < 0.1
+
+
+def test_price_vanilla_mc_put_payoff_is_supported() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.01, dividend_yield=0.0)
+    params = HestonParams(kappa=1.5, theta=0.04, sigma=0.6, rho=-0.7, v0=0.05)
+    option = VanillaOption(strike=105.0, maturity=0.75, side=OptionSide.PUT)
+
+    result = price_vanilla_mc(
+        option=option,
+        market=market,
+        params=params,
+        steps=24,
+        n_paths=3_000,
+        seed=77,
+    )
+
+    assert result.price >= 0.0
+    assert np.all(result.discounted_payoffs >= 0.0)
+
+
+def test_price_vanilla_mc_rejects_invalid_inputs() -> None:
+    market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
+    params = HestonParams(kappa=1.8, theta=0.04, sigma=0.5, rho=-0.6, v0=0.05)
+
+    with pytest.raises(ValueError, match="requires a scalar strike"):
+        price_vanilla_mc(
+            option=VanillaOption(
+                strike=np.array([95.0, 100.0]),
+                maturity=1.0,
+                side=OptionSide.CALL,
+            ),
+            market=market,
+            params=params,
+            steps=16,
+            n_paths=2_000,
+        )
+
+    with pytest.raises(ValueError, match="confidence_level must lie strictly between 0 and 1"):
+        price_vanilla_mc(
+            option=VanillaOption(strike=100.0, maturity=1.0, side=OptionSide.CALL),
+            market=market,
+            params=params,
+            steps=16,
+            n_paths=2_000,
+            confidence_level=1.0,
         )

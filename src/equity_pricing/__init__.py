@@ -34,6 +34,7 @@ from equity_pricing.simulation import (
     draw_correlated_normals,
     make_rng,
     make_time_grid,
+    price_vanilla_mc,
     qe_variance_step,
     simulate_heston_paths,
 )
@@ -44,6 +45,7 @@ from equity_pricing.types import (
     HestonParams,
     MarketSmile,
     MarketSurface,
+    MonteCarloResult,
     OptionSide,
     SmileQuote,
     VanillaOption,
@@ -57,6 +59,7 @@ __all__ = [
     "HestonParams",
     "MarketSmile",
     "MarketSurface",
+    "MonteCarloResult",
     "OptionSide",
     "SmileQuote",
     "VanillaOption",
@@ -85,6 +88,7 @@ __all__ = [
     "draw_correlated_normals",
     "make_rng",
     "make_time_grid",
+    "price_vanilla_mc",
     "qe_variance_step",
     "simulate_heston_paths",
 ]

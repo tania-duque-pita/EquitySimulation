@@ -241,3 +241,14 @@ class CalibrationResult:
     nfev: int
     message: str
     n_restarts: int
+
+
+@dataclass(frozen=True, slots=True)
+class MonteCarloResult:
+    """Summary statistics from a Monte Carlo pricing run."""
+
+    price: float
+    standard_error: float
+    confidence_interval: tuple[float, float]
+    discounted_payoffs: np.ndarray
+    n_paths: int

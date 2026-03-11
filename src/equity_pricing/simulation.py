@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from statistics import NormalDist
+
 import numpy as np
 
-from equity_pricing.types import FlatMarketInputs, HestonParams
+from equity_pricing.black_scholes import discount_factor
+from equity_pricing.types import (
+    FlatMarketInputs,
+    HestonParams,
+    MonteCarloResult,
+    OptionSide,
+    VanillaOption,
+)
 
 
 def make_time_grid(maturity: float, steps: int) -> np.ndarray:
@@ -204,3 +213,63 @@ def simulate_heston_paths(
         variance_paths = variance_paths[:, :n_paths]
 
     return time_grid, spot_paths, variance_paths
+
+
+def price_vanilla_mc(
+    option: VanillaOption,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    steps: int,
+    n_paths: int,
+    seed: int | None = None,
+    antithetic: bool = True,
+    psi_threshold: float = 1.5,
+    confidence_level: float = 0.95,
+) -> MonteCarloResult:
+    """Price a European vanilla option by Monte Carlo under Heston dynamics."""
+
+    if confidence_level <= 0.0 or confidence_level >= 1.0:
+        raise ValueError(
+            f"confidence_level must lie strictly between 0 and 1, got {confidence_level!r}."
+        )
+
+    strike = np.asarray(option.strike, dtype=float)
+    if strike.shape != ():
+        raise ValueError("price_vanilla_mc requires a scalar strike.")
+
+    _, spot_paths, _ = simulate_heston_paths(
+        market=market,
+        params=params,
+        maturity=option.maturity,
+        steps=steps,
+        n_paths=n_paths,
+        seed=seed,
+        antithetic=antithetic,
+        psi_threshold=psi_threshold,
+    )
+
+    terminal_spots = spot_paths[-1]
+    strike_value = float(strike)
+    if option.side == OptionSide.CALL:
+        payoffs = np.maximum(terminal_spots - strike_value, 0.0)
+    else:
+        payoffs = np.maximum(strike_value - terminal_spots, 0.0)
+
+    discounted_payoffs = discount_factor(
+        market.risk_free_rate,
+        option.maturity,
+    ) * payoffs
+    price = float(np.mean(discounted_payoffs))
+    standard_error = float(np.std(discounted_payoffs, ddof=1) / np.sqrt(n_paths))
+
+    z_score = NormalDist().inv_cdf(0.5 * (1.0 + confidence_level))
+    half_width = z_score * standard_error
+    confidence_interval = (price - half_width, price + half_width)
+
+    return MonteCarloResult(
+        price=price,
+        standard_error=standard_error,
+        confidence_interval=confidence_interval,
+        discounted_payoffs=discounted_payoffs,
+        n_paths=n_paths,
+    )
