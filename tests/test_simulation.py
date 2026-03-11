@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from equity_pricing import draw_correlated_normals, make_rng, make_time_grid
+from equity_pricing import HestonParams, draw_correlated_normals, make_rng, make_time_grid
+from equity_pricing.simulation import qe_variance_step
 
 
 def test_make_time_grid_includes_endpoints() -> None:
@@ -60,3 +61,140 @@ def test_draw_correlated_normals_reject_invalid_inputs() -> None:
 
     with pytest.raises(ValueError, match="n_paths must be positive"):
         draw_correlated_normals(rng, rho=0.0, steps=2, n_paths=0)
+
+
+def test_qe_variance_step_returns_non_negative_values() -> None:
+    params = HestonParams(kappa=1.5, theta=0.04, sigma=0.6, rho=-0.7, v0=0.05)
+    variance = np.array([0.01, 0.04, 0.09])
+    normal_shocks = np.array([-1.0, 0.0, 1.0])
+    uniform_shocks = np.array([0.2, 0.5, 0.8])
+
+    next_variance = qe_variance_step(
+        variance,
+        dt=1.0 / 12.0,
+        params=params,
+        normal_shocks=normal_shocks,
+        uniform_shocks=uniform_shocks,
+    )
+
+    assert next_variance.shape == variance.shape
+    assert np.all(next_variance >= 0.0)
+
+
+def test_qe_variance_step_matches_conditional_moments_in_quadratic_branch() -> None:
+    params = HestonParams(kappa=3.0, theta=0.04, sigma=0.3, rho=-0.4, v0=0.05)
+    variance = np.full(200_000, 0.04)
+    dt = 1.0 / 52.0
+    rng = make_rng(123)
+
+    normal_shocks = rng.standard_normal(variance.shape)
+    uniform_shocks = rng.uniform(size=variance.shape)
+    next_variance = qe_variance_step(
+        variance,
+        dt=dt,
+        params=params,
+        normal_shocks=normal_shocks,
+        uniform_shocks=uniform_shocks,
+    )
+
+    exp_kdt = np.exp(-params.kappa * dt)
+    target_mean = params.theta + (variance[0] - params.theta) * exp_kdt
+    target_var = (
+        variance[0]
+        * params.sigma**2
+        * exp_kdt
+        * (1.0 - exp_kdt)
+        / params.kappa
+        + params.theta
+        * params.sigma**2
+        * (1.0 - exp_kdt) ** 2
+        / (2.0 * params.kappa)
+    )
+
+    assert np.mean(next_variance) == pytest.approx(target_mean, rel=0.01)
+    assert np.var(next_variance) == pytest.approx(target_var, rel=0.05)
+
+
+def test_qe_variance_step_matches_conditional_moments_in_exponential_branch() -> None:
+    params = HestonParams(kappa=0.8, theta=0.04, sigma=1.8, rho=-0.4, v0=0.05)
+    variance = np.full(250_000, 0.04)
+    dt = 2.0
+    rng = make_rng(456)
+
+    normal_shocks = rng.standard_normal(variance.shape)
+    uniform_shocks = rng.uniform(size=variance.shape)
+    next_variance = qe_variance_step(
+        variance,
+        dt=dt,
+        params=params,
+        normal_shocks=normal_shocks,
+        uniform_shocks=uniform_shocks,
+    )
+
+    exp_kdt = np.exp(-params.kappa * dt)
+    target_mean = params.theta + (variance[0] - params.theta) * exp_kdt
+    target_var = (
+        variance[0]
+        * params.sigma**2
+        * exp_kdt
+        * (1.0 - exp_kdt)
+        / params.kappa
+        + params.theta
+        * params.sigma**2
+        * (1.0 - exp_kdt) ** 2
+        / (2.0 * params.kappa)
+    )
+
+    assert np.mean(next_variance) == pytest.approx(target_mean, rel=0.02)
+    assert np.var(next_variance) == pytest.approx(target_var, rel=0.08)
+    assert np.any(next_variance == 0.0)
+
+
+def test_qe_variance_step_rejects_invalid_inputs() -> None:
+    params = HestonParams(kappa=1.5, theta=0.04, sigma=0.6, rho=-0.7, v0=0.05)
+
+    with pytest.raises(ValueError, match="dt must be positive"):
+        qe_variance_step(
+            variance=np.array([0.04]),
+            dt=0.0,
+            params=params,
+            normal_shocks=np.array([0.0]),
+            uniform_shocks=np.array([0.5]),
+        )
+
+    with pytest.raises(ValueError, match="psi_threshold must be greater than 1.0"):
+        qe_variance_step(
+            variance=np.array([0.04]),
+            dt=0.1,
+            params=params,
+            normal_shocks=np.array([0.0]),
+            uniform_shocks=np.array([0.5]),
+            psi_threshold=1.0,
+        )
+
+    with pytest.raises(ValueError, match="variance must be non-negative"):
+        qe_variance_step(
+            variance=np.array([-0.01]),
+            dt=0.1,
+            params=params,
+            normal_shocks=np.array([0.0]),
+            uniform_shocks=np.array([0.5]),
+        )
+
+    with pytest.raises(ValueError, match="must share the same shape"):
+        qe_variance_step(
+            variance=np.array([0.04, 0.05]),
+            dt=0.1,
+            params=params,
+            normal_shocks=np.array([0.0]),
+            uniform_shocks=np.array([0.5]),
+        )
+
+    with pytest.raises(ValueError, match="strictly between 0 and 1"):
+        qe_variance_step(
+            variance=np.array([0.04]),
+            dt=0.1,
+            params=params,
+            normal_shocks=np.array([0.0]),
+            uniform_shocks=np.array([1.0]),
+        )

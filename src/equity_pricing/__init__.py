@@ -30,7 +30,12 @@ from equity_pricing.plots import (
     plot_smile_fit,
     plot_surface_fit,
 )
-from equity_pricing.simulation import draw_correlated_normals, make_rng, make_time_grid
+from equity_pricing.simulation import (
+    draw_correlated_normals,
+    make_rng,
+    make_time_grid,
+    qe_variance_step,
+)
 from equity_pricing.types import (
     CalibrationSettings,
     CalibrationResult,
@@ -79,6 +84,7 @@ __all__ = [
     "draw_correlated_normals",
     "make_rng",
     "make_time_grid",
+    "qe_variance_step",
 ]
 
 __version__ = "0.1.0"
