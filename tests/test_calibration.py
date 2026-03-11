@@ -17,6 +17,7 @@ from equity_pricing import (
     surface_objective_from_unconstrained,
     surface_residuals,
 )
+from equity_pricing.calibration import _error_metrics
 
 
 @pytest.fixture
@@ -220,6 +221,14 @@ def test_calibration_result_error_metrics_match_residuals(
     assert result.rmse == pytest.approx(expected_rmse)
     assert result.mae == pytest.approx(expected_mae)
     assert result.max_abs_error == pytest.approx(expected_max_abs_error)
+
+
+def test_error_metrics_ignore_nan_residuals() -> None:
+    rmse, mae, max_abs_error = _error_metrics(np.array([0.1, np.nan, -0.2]))
+
+    assert rmse == pytest.approx(np.sqrt((0.1**2 + 0.2**2) / 2.0))
+    assert mae == pytest.approx(0.15)
+    assert max_abs_error == pytest.approx(0.2)
 
 
 def test_surface_residuals_stack_expiry_blocks_in_surface_order(

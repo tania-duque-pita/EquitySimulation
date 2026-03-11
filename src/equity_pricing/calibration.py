@@ -93,6 +93,17 @@ def _quote_residuals(
     return np.where(np.isnan(model_vols - smile.implied_vols), settings.nan_penalty, model_vols - smile.implied_vols)
 
 
+def _error_metrics(residuals: np.ndarray) -> tuple[float, float, float]:
+    finite_residuals = np.asarray(residuals, dtype=float)[np.isfinite(residuals)]
+    if finite_residuals.size == 0:
+        return float("nan"), float("nan"), float("nan")
+
+    rmse = float(np.sqrt(np.mean(finite_residuals * finite_residuals)))
+    mae = float(np.mean(np.abs(finite_residuals)))
+    max_abs_error = float(np.max(np.abs(finite_residuals)))
+    return rmse, mae, max_abs_error
+
+
 def smile_residuals(
     smile: MarketSmile,
     market: FlatMarketInputs,
@@ -179,6 +190,8 @@ def _surface_model_vols(
             for smile in surface.smiles
         ]
     )
+
+
 def calibrate_smile(
     smile: MarketSmile,
     market: FlatMarketInputs,
@@ -228,9 +241,7 @@ def calibrate_smile(
         quadrature_points=calibration_settings.quadrature_points,
     )
     quote_residuals = _quote_residuals(smile, market, best_params, calibration_settings)
-    rmse = float(np.sqrt(np.mean(quote_residuals * quote_residuals)))
-    mae = float(np.mean(np.abs(quote_residuals)))
-    max_abs_error = float(np.max(np.abs(quote_residuals)))
+    rmse, mae, max_abs_error = _error_metrics(quote_residuals)
 
     return CalibrationResult(
         params=best_params,
@@ -292,9 +303,7 @@ def calibrate_surface(
     model_vols = _surface_model_vols(surface, market, best_params, calibration_settings)
     market_vols = np.concatenate([smile.implied_vols for smile in surface.smiles])
     quote_residuals = model_vols - market_vols
-    rmse = float(np.sqrt(np.mean(quote_residuals * quote_residuals)))
-    mae = float(np.mean(np.abs(quote_residuals)))
-    max_abs_error = float(np.max(np.abs(quote_residuals)))
+    rmse, mae, max_abs_error = _error_metrics(quote_residuals)
 
     return CalibrationResult(
         params=best_params,
