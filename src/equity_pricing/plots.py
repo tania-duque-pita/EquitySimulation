@@ -27,6 +27,63 @@ def plot_market_smile(
     return figure, axes
 
 
+def plot_volatility_surface(
+    surface: MarketSurface,
+    *,
+    title: str | None = None,
+    cmap: str = "viridis",
+) -> tuple[Figure, Axes]:
+    """Plot a full implied-volatility surface in 3D."""
+
+    strikes_by_smile = [smile.strikes for smile in surface.smiles]
+    maturities = surface.maturities
+
+    figure = plt.figure()
+    axes = figure.add_subplot(111, projection="3d")
+
+    same_strike_grid = all(
+        np.array_equal(strikes_by_smile[0], strikes) for strikes in strikes_by_smile[1:]
+    )
+
+    if same_strike_grid:
+        strike_grid = strikes_by_smile[0]
+        strike_mesh, maturity_mesh = np.meshgrid(strike_grid, maturities)
+        vol_mesh = np.array([smile.implied_vols for smile in surface.smiles], dtype=float)
+        plotted = axes.plot_surface(
+            strike_mesh,
+            maturity_mesh,
+            vol_mesh,
+            cmap=cmap,
+            linewidth=0.0,
+            antialiased=True,
+        )
+    else:
+        strikes = np.concatenate(strikes_by_smile)
+        maturity_values = np.concatenate(
+            [
+                np.full(len(smile.quotes), smile.maturity, dtype=float)
+                for smile in surface.smiles
+            ]
+        )
+        vols = np.concatenate([smile.implied_vols for smile in surface.smiles])
+        plotted = axes.plot_trisurf(
+            strikes,
+            maturity_values,
+            vols,
+            cmap=cmap,
+            linewidth=0.2,
+            antialiased=True,
+        )
+
+    axes.set_xlabel("Strike")
+    axes.set_ylabel("Maturity")
+    axes.set_zlabel("Implied Volatility")
+    axes.set_title(title or "Implied Volatility Surface")
+    figure.colorbar(plotted, ax=axes, shrink=0.7, pad=0.1, label="Implied Volatility")
+
+    return figure, axes
+
+
 def plot_smile_fit(
     smile: MarketSmile,
     result: CalibrationResult,

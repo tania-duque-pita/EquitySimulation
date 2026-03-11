@@ -6,7 +6,7 @@ import math
 import warnings
 
 import numpy as np
-from scipy.integrate import IntegrationWarning, quad
+from scipy.integrate import IntegrationWarning, quad, simpson
 
 from equity_pricing.black_scholes import discount_factor
 from equity_pricing.implied_vol import implied_vol_from_price
@@ -190,6 +190,56 @@ def _price_call_scalar(
     return max(0.0, market.spot * discount_q * p1 - strike * discount_r * p2)
 
 
+def _price_calls_vectorized(
+    strikes: np.ndarray,
+    maturity: float,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    *,
+    upper_limit: float,
+    quadrature_points: int,
+) -> np.ndarray:
+    """Return call prices for one maturity using a shared integration grid."""
+
+    strike_grid = np.asarray(strikes, dtype=float)
+    if strike_grid.ndim != 1:
+        raise ValueError(f"strikes must be a 1D array, got shape {strike_grid.shape!r}.")
+    if np.any(strike_grid <= 0.0):
+        raise ValueError("strikes must be positive.")
+    if quadrature_points < 8:
+        raise ValueError("quadrature_points must be at least 8.")
+
+    u_min = 1.0e-8
+    u_grid = np.linspace(u_min, upper_limit, int(quadrature_points), dtype=float)
+    log_strikes = np.log(strike_grid)
+
+    phi_p2 = heston_characteristic_function(u_grid.astype(np.complex128), maturity, market, params)
+    phi_minus_i = heston_characteristic_function(complex(0.0, -1.0), maturity, market, params)
+    if not np.isfinite(phi_minus_i) or phi_minus_i == 0.0:
+        return np.full_like(strike_grid, np.nan, dtype=float)
+
+    phi_p1 = heston_characteristic_function(
+        (u_grid - 1j).astype(np.complex128),
+        maturity,
+        market,
+        params,
+    ) / phi_minus_i
+
+    phase = np.exp(-1j * np.outer(log_strikes, u_grid))
+    kernel = 1j * u_grid
+    integrand_p1 = np.real(phase * phi_p1 / kernel)
+    integrand_p2 = np.real(phase * phi_p2 / kernel)
+
+    p1_integrals = simpson(integrand_p1, x=u_grid, axis=1)
+    p2_integrals = simpson(integrand_p2, x=u_grid, axis=1)
+
+    discount_r = discount_factor(market.risk_free_rate, maturity)
+    discount_q = discount_factor(market.dividend_yield, maturity)
+    p1 = 0.5 + p1_integrals / math.pi
+    p2 = 0.5 + p2_integrals / math.pi
+    return np.maximum(0.0, market.spot * discount_q * p1 - strike_grid * discount_r * p2)
+
+
 def price_european(
     option: VanillaOption,
     market: FlatMarketInputs,
@@ -273,6 +323,55 @@ def model_smile(
                 limit=limit,
             )
             implied_vols[index] = implied_vol_from_price(price, option, market)
+        except (RuntimeError, ValueError):
+            if np.isnan(fill_value):
+                implied_vols[index] = np.nan
+            else:
+                raise
+
+    return implied_vols
+
+
+def _model_smile_fast(
+    strikes: np.ndarray,
+    maturity: float,
+    market: FlatMarketInputs,
+    params: HestonParams,
+    *,
+    side: OptionSide = OptionSide.CALL,
+    fill_value: float = np.nan,
+    upper_limit: float = 200.0,
+    quadrature_points: int = 512,
+) -> np.ndarray:
+    """Return model-implied vols using shared-grid integration across all strikes."""
+
+    strike_grid = np.asarray(strikes, dtype=float)
+    if strike_grid.ndim != 1:
+        raise ValueError(f"strikes must be a 1D array, got shape {strike_grid.shape!r}.")
+    if np.any(strike_grid <= 0.0):
+        raise ValueError("strikes must be positive.")
+    if maturity <= 0.0:
+        raise ValueError(f"maturity must be positive, got {maturity!r}.")
+
+    implied_vols = np.empty_like(strike_grid, dtype=float)
+    call_prices = _price_calls_vectorized(
+        strike_grid,
+        maturity,
+        market,
+        params,
+        upper_limit=upper_limit,
+        quadrature_points=quadrature_points,
+    )
+
+    discount_r = discount_factor(market.risk_free_rate, maturity)
+    discount_q = discount_factor(market.dividend_yield, maturity)
+    forward_intrinsic = market.spot * discount_q - strike_grid * discount_r
+    prices = call_prices if side is OptionSide.CALL else call_prices - forward_intrinsic
+
+    for index, (strike, price) in enumerate(zip(strike_grid, prices, strict=True)):
+        option = VanillaOption(strike=float(strike), maturity=maturity, side=side)
+        try:
+            implied_vols[index] = implied_vol_from_price(float(price), option, market)
         except (RuntimeError, ValueError):
             if np.isnan(fill_value):
                 implied_vols[index] = np.nan

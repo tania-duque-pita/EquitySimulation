@@ -207,6 +207,7 @@ class CalibrationSettings:
     abs_tol: float = 1.0e-8
     rel_tol: float = 1.0e-8
     integration_limit: int = 200
+    quadrature_points: int = 512
     n_restarts: int = 3
 
     def __post_init__(self) -> None:
@@ -215,6 +216,7 @@ class CalibrationSettings:
         _require_positive(self.abs_tol, "abs_tol")
         _require_positive(self.rel_tol, "rel_tol")
         _require_positive(self.integration_limit, "integration_limit")
+        _require_positive(self.quadrature_points, "quadrature_points")
         _require_positive(self.n_restarts, "n_restarts")
 
 

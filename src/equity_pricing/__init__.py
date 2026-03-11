@@ -30,6 +30,7 @@ from equity_pricing.plots import (
     plot_residual_heatmap,
     plot_smile_fit,
     plot_surface_fit,
+    plot_volatility_surface,
 )
 from equity_pricing.simulation import (
     draw_correlated_normals,
@@ -87,6 +88,7 @@ __all__ = [
     "plot_residual_heatmap",
     "plot_smile_fit",
     "plot_surface_fit",
+    "plot_volatility_surface",
     "draw_correlated_normals",
     "make_rng",
     "make_time_grid",

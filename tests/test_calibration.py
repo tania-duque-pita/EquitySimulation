@@ -68,6 +68,9 @@ def test_calibration_settings_validate_inputs() -> None:
     with pytest.raises(ValueError, match="integration_limit"):
         CalibrationSettings(integration_limit=0)
 
+    with pytest.raises(ValueError, match="quadrature_points"):
+        CalibrationSettings(quadrature_points=0)
+
     with pytest.raises(ValueError, match="n_restarts"):
         CalibrationSettings(n_restarts=0)
 
@@ -100,7 +103,7 @@ def test_smile_residuals_use_nan_penalty_on_model_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "equity_pricing.calibration.model_smile",
+        "equity_pricing.calibration._model_smile_fast",
         lambda *args, **kwargs: np.array([0.2, np.nan, 0.18]),
     )
 

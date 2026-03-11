@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import least_squares
 
-from equity_pricing.heston import model_smile
+from equity_pricing.heston import _model_smile_fast
 from equity_pricing.types import (
     CalibrationResult,
     CalibrationSettings,
@@ -81,16 +81,14 @@ def _quote_residuals(
     params: HestonParams,
     settings: CalibrationSettings,
 ) -> np.ndarray:
-    model_vols = model_smile(
+    model_vols = _model_smile_fast(
         smile.strikes,
         smile.maturity,
         market,
         params,
         fill_value=np.nan,
         upper_limit=settings.upper_limit,
-        abs_tol=settings.abs_tol,
-        rel_tol=settings.rel_tol,
-        limit=settings.integration_limit,
+        quadrature_points=settings.quadrature_points,
     )
     return np.where(np.isnan(model_vols - smile.implied_vols), settings.nan_penalty, model_vols - smile.implied_vols)
 
@@ -169,22 +167,18 @@ def _surface_model_vols(
 ) -> np.ndarray:
     return np.concatenate(
         [
-            model_smile(
+            _model_smile_fast(
                 smile.strikes,
                 smile.maturity,
                 market,
                 params,
                 fill_value=np.nan,
                 upper_limit=settings.upper_limit,
-                abs_tol=settings.abs_tol,
-                rel_tol=settings.rel_tol,
-                limit=settings.integration_limit,
+                quadrature_points=settings.quadrature_points,
             )
             for smile in surface.smiles
         ]
     )
-
-
 def calibrate_smile(
     smile: MarketSmile,
     market: FlatMarketInputs,
@@ -212,7 +206,7 @@ def calibrate_smile(
         total_nfev += int(result.nfev)
 
         candidate_params = HestonParams.from_unconstrained(result.x)
-        candidate_residuals = smile_residuals(smile, market, candidate_params, calibration_settings)
+        candidate_residuals = result.fun
         candidate_objective_value = 0.5 * float(np.dot(candidate_residuals, candidate_residuals))
 
         if candidate_objective_value < best_objective_value:
@@ -224,16 +218,14 @@ def calibrate_smile(
     assert best_result is not None
     assert best_params is not None
     assert best_residuals is not None
-    model_vols = model_smile(
+    model_vols = _model_smile_fast(
         smile.strikes,
         smile.maturity,
         market,
         best_params,
         fill_value=np.nan,
         upper_limit=calibration_settings.upper_limit,
-        abs_tol=calibration_settings.abs_tol,
-        rel_tol=calibration_settings.rel_tol,
-        limit=calibration_settings.integration_limit,
+        quadrature_points=calibration_settings.quadrature_points,
     )
     quote_residuals = _quote_residuals(smile, market, best_params, calibration_settings)
     rmse = float(np.sqrt(np.mean(quote_residuals * quote_residuals)))
@@ -284,13 +276,7 @@ def calibrate_surface(
         total_nfev += int(result.nfev)
 
         candidate_params = HestonParams.from_unconstrained(result.x)
-        candidate_residuals = surface_residuals(
-            surface,
-            market,
-            candidate_params,
-            calibration_settings,
-            expiry_weights,
-        )
+        candidate_residuals = result.fun
         candidate_objective_value = 0.5 * float(np.dot(candidate_residuals, candidate_residuals))
 
         if candidate_objective_value < best_objective_value:
