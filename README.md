@@ -2,7 +2,7 @@
 
 Python project focused on equity-option pricing and Heston-model calibration.
 
-This repository is positioned as a compact quantitative development / quantitative modelling portfolio project. It demonstrates model implementation, numerical methods, calibration workflows, testing discipline, and notebook-based communication of results.
+This repository is positioned as a compact quantitative modelling project. It demonstrates model implementation, numerical methods, calibration workflows, unit testing, and notebook-based demos.
 
 ## Repo Objective
 
@@ -70,22 +70,15 @@ The project is set up for local development with a virtual environment.
 ```powershell
 py -3.13 -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e .[dev]
+python -m pip install -e .[dev,demo]
 ```
+
+That installs the library plus the notebook, test tooling and demo extras.
 
 If you want to run the test suite:
 
 ```powershell
-python -m pytest -p no:cacheprovider
-```
-
-If Matplotlib or temporary directories cause issues on Windows / PowerShell:
-
-```powershell
-$env:TEMP="$PWD\.tmp"
-$env:TMP=$env:TEMP
-$env:MPLCONFIGDIR="$PWD\.tmp\mpl"
+python -m pytest
 ```
 
 ## Demo
@@ -101,12 +94,3 @@ The notebook is the intended demo surface for this repository. It shows how to:
 - inspect fit quality
 - visualize outputs
 
-## Notes For Recruiters
-
-This repository is intended to show evidence of:
-
-- numerical modelling in Python
-- model calibration against implied-volatility data
-- separation between pricing, calibration, simulation, and plotting concerns
-- test-first / regression-oriented engineering practice
-- ability to present results in a notebook suitable for discussion
