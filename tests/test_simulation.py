@@ -1,20 +1,22 @@
 import numpy as np
 import pytest
 
-from equity_pricing import (
+from equity_pricing.simulation import (
+    draw_correlated_normals,
+    make_rng,
+    make_time_grid,
+    price_vanilla_mc,
+    qe_variance_step,
+    simulate_heston_paths,
+)
+from equity_pricing.heston import price_european as price_european_heston
+from equity_pricing.types import (
     FlatMarketInputs,
     HestonParams,
     MonteCarloResult,
     OptionSide,
     VanillaOption,
-    draw_correlated_normals,
-    make_rng,
-    make_time_grid,
-    price_european_heston,
-    price_vanilla_mc,
-    simulate_heston_paths,
 )
-from equity_pricing.simulation import qe_variance_step
 
 
 def test_make_time_grid_includes_endpoints() -> None:

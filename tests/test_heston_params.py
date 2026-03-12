@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from equity_pricing import HestonParams
+from equity_pricing.types import HestonParams
 
 
 def test_heston_params_accept_valid_inputs() -> None:

@@ -1,23 +1,25 @@
 import numpy as np
 import pytest
 
-from equity_pricing import (
+from equity_pricing.calibration import (
+    _error_metrics,
     calibrate_surface,
     calibrate_smile,
-    model_smile,
-    CalibrationSettings,
-    CalibrationResult,
-    FlatMarketInputs,
-    HestonParams,
-    MarketSmile,
-    MarketSurface,
-    SmileQuote,
     smile_objective_from_unconstrained,
     smile_residuals,
     surface_objective_from_unconstrained,
     surface_residuals,
 )
-from equity_pricing.calibration import _error_metrics
+from equity_pricing.heston import model_smile
+from equity_pricing.types import (
+    CalibrationResult,
+    CalibrationSettings,
+    FlatMarketInputs,
+    HestonParams,
+    MarketSmile,
+    MarketSurface,
+    SmileQuote,
+)
 
 
 @pytest.fixture

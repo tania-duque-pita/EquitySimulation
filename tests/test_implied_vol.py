@@ -1,13 +1,9 @@
 import numpy as np
 import pytest
 
-from equity_pricing import (
-    FlatMarketInputs,
-    OptionSide,
-    VanillaOption,
-    implied_vol_from_price,
-    price_european,
-)
+from equity_pricing.black_scholes import price_european
+from equity_pricing.implied_vol import implied_vol_from_price
+from equity_pricing.types import FlatMarketInputs, OptionSide, VanillaOption
 
 
 def test_implied_vol_recovers_call_volatility() -> None:

@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from equity_pricing import FlatMarketInputs, OptionSide, VanillaOption
+from equity_pricing.types import FlatMarketInputs, OptionSide, VanillaOption
 
 
 def test_vanilla_option_accepts_valid_inputs() -> None:

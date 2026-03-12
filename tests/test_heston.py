@@ -3,19 +3,21 @@ import math
 import numpy as np
 import pytest
 
-from equity_pricing import (
-    FlatMarketInputs,
-    HestonParams,
-    OptionSide,
-    VanillaOption,
+from equity_pricing.black_scholes import price_european
+from equity_pricing.heston import (
     heston_characteristic_function,
     heston_lewis_integrand,
     integrate_heston_integrand,
     model_smile,
     model_surface,
+    price_european as price_european_heston,
+)
+from equity_pricing.types import (
+    FlatMarketInputs,
+    HestonParams,
     MarketSurface,
-    price_european,
-    price_european_heston,
+    OptionSide,
+    VanillaOption,
 )
 
 

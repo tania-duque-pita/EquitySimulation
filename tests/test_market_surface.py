@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from equity_pricing import MarketSmile, MarketSurface, SmileQuote
+from equity_pricing.types import MarketSmile, MarketSurface, SmileQuote
 
 
 def _make_smile(maturity: float, vols: tuple[float, float]) -> MarketSmile:

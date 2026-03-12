@@ -1,16 +1,14 @@
 import numpy as np
 import pytest
 
-from equity_pricing import (
-    FlatMarketInputs,
-    OptionSide,
-    VanillaOption,
+from equity_pricing.black_scholes import (
     discount_factor,
     forward_price,
     price_bounds,
     price_european,
     vega,
 )
+from equity_pricing.types import FlatMarketInputs, OptionSide, VanillaOption
 
 
 def test_discount_factor_matches_continuous_discounting() -> None:

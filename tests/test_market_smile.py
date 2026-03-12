@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from equity_pricing import MarketSmile, SmileQuote
+from equity_pricing.types import MarketSmile, SmileQuote
 
 
 def test_smile_quote_accepts_valid_inputs() -> None:
