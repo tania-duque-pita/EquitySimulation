@@ -1,47 +1,86 @@
 # Equity Pricing
 
-Incremental Python build-out of a Heston calibration and pricing framework for European equity options.
+Python project focused on equity-option pricing and Heston-model calibration.
 
-## Scope
+This repository is positioned as a compact quantitative development / quantitative modelling portfolio project. It demonstrates model implementation, numerical methods, calibration workflows, testing discipline, and notebook-based communication of results.
 
-The repository now covers the full workflow:
+## Repo Objective
 
-- Black-Scholes pricing and implied-vol inversion
-- Heston semi-analytic pricing and implied-vol smile generation
-- Smile and surface calibration
-- Heston Monte Carlo simulation with an Andersen QE variance scheme
-- Diagnostics, plots, and regression tests
+Build a clean, testable library for European equity-option analytics with an emphasis on:
 
-## Package Layout
+- Black-Scholes pricing and implied-volatility inversion
+- Heston semi-analytic pricing
+- Heston smile and surface calibration to market implied vols
+- Heston Monte Carlo simulation with Andersen QE variance dynamics
+- Diagnostics and visualization for calibration outputs
+
+## Repo Current Capabilities
+
+- Black-Scholes
+  - European call/put pricing
+  - no-arbitrage price bounds
+  - vega
+  - implied-volatility inversion
+
+- Heston
+  - characteristic-function implementation
+  - semi-analytic European pricing
+  - model smile generation
+  - model surface generation
+
+- Calibration
+  - smile calibration
+  - surface calibration
+  - bounded parameter transforms
+  - multiple restart seeds
+  - calibration error reporting (`RMSE`, `MAE`, `MaxAbsError`)
+
+- Simulation
+  - Andersen QE variance stepping
+  - correlated shock generation
+  - Heston path simulation
+  - Monte Carlo vanilla pricing with confidence intervals
+
+- Engineering quality
+  - unit and regression tests across pricing, calibration, simulation, and plotting
+  - notebook demo for synthetic and market-data workflows
+
+## Project Structure
 
 ```text
 src/equity_pricing/
 tests/
+examples/examples.ipynb
 ```
 
 Main modules:
 
-- `black_scholes.py`: Black-Scholes pricing, vega, and no-arbitrage bounds
-- `implied_vol.py`: implied-vol inversion from option prices
-- `heston.py`: characteristic function pricing and model smile/surface generation
-- `calibration.py`: smile and surface calibration objectives plus optimizers
-- `simulation.py`: QE variance stepping, Heston path simulation, and Monte Carlo pricing
-- `plots.py`: smile/surface fit plots and residual diagnostics
-- `examples.py`: end-to-end synthetic workflow
+- `black_scholes.py`: Black-Scholes pricing utilities
+- `implied_vol.py`: implied-volatility inversion
+- `heston.py`: Heston characteristic-function pricing and model smile/surface generation
+- `calibration.py`: smile and surface calibration
+- `simulation.py`: Monte Carlo and QE variance dynamics
+- `plots.py`: calibration diagnostics and surface plots
+- `types.py`: domain datatypes and settings
 
-## Local Setup
+## Setup
 
-This repo works well with a local virtual environment. On your machine, `py` is the reliable launcher, so prefer it over the global `python` command.
+The project is set up for local development with a virtual environment.
 
 ```powershell
 py -3.13 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -e .[dev]
+```
+
+If you want to run the test suite:
+
+```powershell
 python -m pytest -p no:cacheprovider
 ```
 
-If Matplotlib complains about config or cache directories in PowerShell, set:
+If Matplotlib or temporary directories cause issues on Windows / PowerShell:
 
 ```powershell
 $env:TEMP="$PWD\.tmp"
@@ -49,175 +88,25 @@ $env:TMP=$env:TEMP
 $env:MPLCONFIGDIR="$PWD\.tmp\mpl"
 ```
 
-## Quick Start
+## Demo
 
-Import the package:
+For the project walkthrough, go directly to:
 
-```python
-from equity_pricing import (
-    CalibrationSettings,
-    FlatMarketInputs,
-    HestonParams,
-    OptionSide,
-    VanillaOption,
-    implied_vol_from_price,
-    model_smile,
-    price_european,
-    price_european_heston,
-    price_vanilla_mc,
-)
-```
+[examples.ipynb](c:/Github_Repos/EquityPricing/examples/examples.ipynb)
 
-Black-Scholes example:
+The notebook is the intended demo surface for this repository. It shows how to:
 
-```python
-from equity_pricing import FlatMarketInputs, OptionSide, VanillaOption, price_european
+- load / prepare implied-volatility data
+- calibrate Heston parameters to a smile or surface
+- inspect fit quality
+- visualize outputs
 
-market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
-option = VanillaOption(strike=100.0, maturity=1.0, side=OptionSide.CALL)
+## Notes For Recruiters
 
-price = price_european(option, market, vol=0.20)
-print(price)
-```
+This repository is intended to show evidence of:
 
-Heston semi-analytic example:
-
-```python
-from equity_pricing import (
-    FlatMarketInputs,
-    HestonParams,
-    OptionSide,
-    VanillaOption,
-    price_european_heston,
-)
-
-market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
-params = HestonParams(kappa=2.0, theta=0.04, sigma=0.2, rho=-0.3, v0=0.04)
-option = VanillaOption(strike=100.0, maturity=1.0, side=OptionSide.CALL)
-
-price = price_european_heston(option, market, params)
-print(price)
-```
-
-Monte Carlo example:
-
-```python
-from equity_pricing import (
-    FlatMarketInputs,
-    HestonParams,
-    OptionSide,
-    VanillaOption,
-    price_vanilla_mc,
-)
-
-market = FlatMarketInputs(spot=100.0, risk_free_rate=0.02, dividend_yield=0.01)
-params = HestonParams(kappa=2.0, theta=0.04, sigma=0.2, rho=-0.3, v0=0.04)
-option = VanillaOption(strike=100.0, maturity=1.0, side=OptionSide.CALL)
-
-result = price_vanilla_mc(option, market, params, steps=64, n_paths=10_000, seed=123)
-print(result.price, result.standard_error, result.confidence_interval)
-```
-
-## End-to-End Example
-
-Run the synthetic calibration and diagnostics workflow:
-
-```powershell
-python -m equity_pricing.examples
-```
-
-From Python:
-
-```python
-from equity_pricing import run_end_to_end_example
-
-results = run_end_to_end_example(save_dir="example_output")
-print(results["surface_result"].params)
-print(results["analytic_price"])
-```
-
-The example:
-
-- generates a synthetic Heston surface
-- calibrates a smile and a full surface
-- prices a sample option analytically and by Monte Carlo
-- creates smile-fit, surface-fit, and residual-heatmap figures
-
-## Modeling Assumptions
-
-This framework intentionally stays narrow and explicit:
-
-- European vanilla equity options only
-- flat risk-free rate `r` and flat dividend yield `q`
-- Black-Scholes implied vols as the calibration target
-- Heston risk-neutral dynamics with parameters `(kappa, theta, sigma, rho, v0)`
-- semi-analytic pricing through the Heston characteristic function
-- Monte Carlo variance simulation through the Andersen QE scheme
-
-What is not in scope:
-
-- American, barrier, Asian, or path-dependent pricing APIs
-- stochastic interest rates or term structures
-- bid/ask-aware calibration weights
-- local volatility or jump-diffusion extensions
-
-## Numerical Notes
-
-- Black-Scholes implied vols are inverted with Brent root finding.
-- Heston prices are computed by numerical integration of the characteristic-function probabilities.
-- Smile and surface calibration use `scipy.optimize.least_squares` on implied-vol residuals.
-- Monte Carlo paths use antithetic sampling by default.
-- The Monte Carlo regression tests currently show the cleanest agreement with the semi-analytic engine in milder call-price configurations. Rougher parameter sets still deserve more numerical work if production-quality MC accuracy is required.
-
-## Testing
-
-The test suite includes:
-
-- unit tests for pricing, vega, bounds, implied-vol inversion, and parameter validation
-- regression tests for Heston characteristic functions and semi-analytic prices
-- synthetic smile and surface calibration recovery tests
-- plot smoke tests
-- Monte Carlo path and pricing tests
-- Monte Carlo vs semi-analytic consistency checks
-- an end-to-end example smoke test
-
-Run everything:
-
-```powershell
-python -m pytest -p no:cacheprovider
-```
-
-Run a focused file:
-
-```powershell
-python -m pytest tests/test_simulation.py -p no:cacheprovider
-```
-
-## Release Checks
-
-For a clean local verification pass, use:
-
-```powershell
-python -m pytest -p no:cacheprovider
-python -m ruff check src tests
-```
-
-If you want the exact Windows environment used during development in this repo:
-
-```powershell
-$env:TEMP="$PWD\.tmp"
-$env:TMP=$env:TEMP
-$env:MPLCONFIGDIR="$PWD\.tmp\mpl"
-python -m pytest -p no:cacheprovider
-python -m ruff check src tests
-```
-
-## Status
-
-The 30-commit roadmap is complete through:
-
-- pricing
-- implied-vol inversion
-- smile and surface calibration
-- Monte Carlo simulation and pricing
-- diagnostics and example workflows
+- numerical modelling in Python
+- model calibration against implied-volatility data
+- separation between pricing, calibration, simulation, and plotting concerns
+- test-first / regression-oriented engineering practice
+- ability to present results in a notebook suitable for discussion
